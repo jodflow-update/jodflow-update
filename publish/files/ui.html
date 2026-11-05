@@ -332,13 +332,16 @@ button.is-busy::after{content:"";position:absolute;inset:0;margin:auto;width:17p
           <textarea id="pstory" style="min-height:120px" placeholder="ປ່ອຍຫວ່າງ = ໃຫ້ AI ຄິດເອງ"></textarea>
           <label for="pnote">ບົດເວົ້າ (ຖ້າມີ)</label>
           <textarea id="pnote" placeholder="ໃສ່ບົດເວົ້າໃຫ້ຄົບ Shot 1-12"></textarea>
-          <!-- ໂໝດສິນຄ້າ (default): ຊ່ອງເກົ່າ ບໍ່ແຕະ -->
+          <!-- ໂໝດສິນຄ້າ (default): dropzone ຫຼາຍຮູບ ຄືໂໝດຄົນລິວິວ (1-5 ຮູບ) -->
           <div class="mode-only" data-mode="product">
-            <label for="pref">ຮູບສິນຄ້າຕົ້ນສະບັບ (ບັງຄັບ)</label>
-            <div class="row" style="align-items:flex-start">
-              <input id="pref" type="file" accept="image/png,image/jpeg,image/webp" style="width:auto;flex:1" />
-              <img id="prefPreview" alt="" style="max-width:150px;max-height:150px;border:1px solid var(--line2);border-radius:14px;display:none;background:#000"/>
+            <div class="dz-label">ຮູບສິນຄ້າ <span class="tag prod">ສິນຄ້າ</span> (1-5 ຮູບ, ບັງຄັບ)</div>
+            <div class="dropzone" id="dzProductM" onclick="document.getElementById('fProductM').click()">
+              <span class="up-ic">⬆</span><span class="up-t">ລາກຮູບສິນຄ້າມາວາງ ຫຼື ກົດເພື່ອເລືອກ (ໄດ້ຫຼາຍຮູບ)</span><span class="up-s">ຮູບທຳອິດ = ຫຼັກ (AI ອ່ານ), ທີ່ເຫຼືອເປັນມຸມເພີ່ມໃຫ້ Flow</span>
             </div>
+            <input type="file" id="fProductM" accept="image/png,image/jpeg,image/webp" multiple hidden />
+            <div class="thumb-grid" id="tgProductM"></div>
+            <div class="zone-count" id="zcProductM"></div>
+            <img id="prefPreview" alt="" style="max-width:150px;max-height:150px;border:1px solid var(--line2);border-radius:14px;display:none;background:#000;margin-top:8px"/>
           </div>
 
           <!-- ໂໝດຄົນລິວິວສິນຄ້າ: 2 zone ແຍກ (ສິນຄ້າ 1 + ຄົນ ≤4) -->
@@ -548,7 +551,7 @@ const MODE_HINTS = {
   course:  ['🎓', 'ໂໝດຂາຍຄອດ: ອັບຮູບຄົນ ≤5 (ບໍ່ມີສິນຄ້າ) — Flow ສ້າງຄົນໜ້າຄືຮູບ ຢືນເວົ້າ ຄອດສອນ', 'course'],
 };
 // ຮູບທີ່ເລືອກຕໍ່ zone (File objects)
-const ZONE_FILES = { product: [], personR: [], personC: [] };
+const ZONE_FILES = { product: [], personR: [], personC: [], productM: [] };
 function setMode(m) {
   CURRENT_MODE = m;
   document.querySelectorAll('#modeSwitch .mode-pill').forEach(p => p.classList.toggle('on', p.dataset.mode === m));
@@ -613,6 +616,7 @@ function renderZone(gridId, countId, zoneKey, max, inputId) {
 }
 // ຕິດຕັ້ງ dropzone ທັງໝົດຕອນໂຫຼດ
 (function initAllDropzones() {
+  initDropzone('dzProductM', 'fProductM', 'tgProductM', 'zcProductM', 'productM', 5);
   initDropzone('dzProduct', 'fProduct', 'tgProduct', 'zcProduct', 'product', 1);
   initDropzone('dzPersonR', 'fPersonR', 'tgPersonR', 'zcPersonR', 'personR', 4);
   initDropzone('dzPersonC', 'fPersonC', 'tgPersonC', 'zcPersonC', 'personC', 5);
@@ -721,8 +725,8 @@ function render() {
     if (!el('pstory').value && s.story) el('pstory').value = s.story;
     if (!el('ai').value) el('ai').value = s.settings?.ai || 'claude';
   }
-  // ສະແດງຮູບທີ່ບັນທຶກໄວ້ແລ້ວ (ຖ້າຍັງບໍ່ມີ preview ຈາກ file input)
-  if (s.hasRef && !el('pref').files[0]) {
+  // ສະແດງຮູບທີ່ບັນທຶກໄວ້ແລ້ວ (ຖ້າຍັງບໍ່ມີຮູບທີ່ຫາກໍເລືອກ)
+  if (s.hasRef && !ZONE_FILES.productM.length) {
     const img = el('prefPreview');
     const url = '/ref-image?v=' + encodeURIComponent(s.refVersion || '0');
     if (!img.src.endsWith(url)) img.src = url;
@@ -838,7 +842,7 @@ async function expandBrief() {
 async function autoScript() {
   const brief = el('pbrief').value.trim();
   if (!brief) { toast('ກະລຸນາພິມ brief ກ່ອນ','err'); return; }
-  const f = el('pref').files?.[0];
+  const f = ZONE_FILES.productM[0];
   if (!f && !STATE.hasRef) { alert('ກະລຸນາເລືອກຮູບສິນຄ້າກ່ອນ'); return; }
   const btn = el('autoScriptBtn');
   if (btn.disabled) return;
@@ -851,6 +855,7 @@ async function autoScript() {
       const dataUrl = await imageToJpeg(f);
       const uploaded = await api('/api/upload-ref', { dataUrl, filename: f.name });
       if (!uploaded.ok) throw new Error(uploaded.error || 'ອັບໂຫຼດຮູບບໍ່ສຳເລັດ');
+      await uploadExtraProductRefs();
     }
     const started = await api('/api/auto-script', { brief });
     if (!started.ok) throw new Error(started.error || 'ເລີ່ມວຽກບໍ່ໄດ້');
@@ -943,9 +948,9 @@ async function saveProduct(start) {
   const story = el('pstory').value.trim();
   const brief = el('pbrief').value.trim();
   const mode = CURRENT_MODE;
-  // ຮູບສິນຄ້າ: ໂໝດສິນຄ້າໃຊ້ #pref ເກົ່າ, ໂໝດຄົນລິວິວໃຊ້ zone dzProduct
+  // ຮູບສິນຄ້າຫຼັກ: ໂໝດສິນຄ້າໃຊ້ zone dzProductM (ຮູບທຳອິດ), ໂໝດຄົນລິວິວໃຊ້ zone dzProduct
   const f = mode === 'product'
-    ? (el('pref').files && el('pref').files[0])
+    ? ZONE_FILES.productM[0]
     : (mode === 'review' ? ZONE_FILES.product[0] : null);
   // ຮູບຄົນ: review=personR (≤4), course=personC (≤5)
   const personFiles = mode === 'review' ? ZONE_FILES.personR : (mode === 'course' ? ZONE_FILES.personC : []);
@@ -958,6 +963,11 @@ async function saveProduct(start) {
       catch(e) { alert('ອ່ານຮູບສິນຄ້າບໍ່ໄດ້: ' + e.message); return; }
       const r = await api('/api/upload-ref', { dataUrl, filename: f.name });
       if (!r.ok) { alert('ອັບໂຫຼດຮູບສິນຄ້າບໍ່ສຳເລັດ: ' + (r.error || '')); return; }
+    }
+    // ໂໝດສິນຄ້າ: ອັບຮູບສິນຄ້າເພີ່ມ (ຮູບທີ 2-5) ເປັນ reference ເພີ່ມໃຫ້ Flow
+    if (mode === 'product') {
+      try { await uploadExtraProductRefs(); }
+      catch(e) { alert(e.message || 'ອັບຮູບສິນຄ້າເພີ່ມບໍ່ສຳເລັດ'); return; }
     }
     if (personFiles.length) {
       const images = [];
@@ -986,10 +996,21 @@ async function saveProduct(start) {
   }
   pull();
 }
-// preview ຮູບທີ່ຜູ້ໃຊ້ຍັງບໍ່ທັນສົ່ງ
+// ອັບຮູບສິນຄ້າເພີ່ມ (ຮູບທີ 2-5 ໃນ zone productM) — ສົ່ງ images:[] ເມື່ອບໍ່ມີ = ລ້າງຂອງເກົ່າ
+async function uploadExtraProductRefs() {
+  const extras = ZONE_FILES.productM.slice(1, 5);
+  const images = [];
+  for (const pf of extras) {
+    try { images.push({ dataUrl: await imageToJpeg(pf), filename: pf.name }); }
+    catch(e) { throw new Error('ອ່ານຮູບສິນຄ້າເພີ່ມບໍ່ໄດ້: ' + e.message); }
+  }
+  const r = await api('/api/upload-extra-refs', { images });
+  if (r && r.ok === false) throw new Error(r.error || 'ອັບຮູບສິນຄ້າເພີ່ມບໍ່ສຳເລັດ');
+}
+// ເມື່ອເລືອກຮູບສິນຄ້າໃໝ່ໃນ zone → ເຊື່ອງ preview ຮູບເກົ່າທີ່ບັນທຶກໄວ້
 document.addEventListener('change', e => {
-  if (e.target && e.target.id === 'pref' && e.target.files[0]) {
-    const img = el('prefPreview'); img.src = URL.createObjectURL(e.target.files[0]); img.style.display = 'block';
+  if (e.target && e.target.id === 'fProductM') {
+    const img = el('prefPreview'); if (img) img.style.display = 'none';
   }
 });
 // ການ scroll ຕ້ອງລື່ນ: ພັກ polling/render ຊົ່ວຄາວ ແລ້ວ sync ທັນທີເມື່ອຢຸດເລື່ອນ.

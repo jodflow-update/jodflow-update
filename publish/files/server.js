@@ -7,7 +7,12 @@ const { buildHero } = require('./hero.js');
 
 // ຮູບທັງໝົດທີ່ຈະແນບເຂົ້າ Flow ຕາມລຳດັບ: ຮູບສິນຄ້າກ່ອນ, ຮູບຄົນຕາມຫຼັງ (ໃຊ້ Stage 3)
 function orderedRefPaths(product) {
-  const list = [product && product.refPath, ...((product && product.personRefs) || [])];
+  // ຮູບສິນຄ້າຫຼັກ → ຮູບສິນຄ້າເພີ່ມ (ໂໝດສິນຄ້າ) → ຮູບຄົນ (ໂໝດຄົນລິວິວ/ຂາຍຄອດ)
+  const list = [
+    product && product.refPath,
+    ...((product && product.extraRefs) || []),
+    ...((product && product.personRefs) || []),
+  ];
   return list.filter(p => p && fs.existsSync(p));
 }
 
@@ -38,7 +43,7 @@ function saveSettings() { fs.writeFileSync(F('settings.json'), JSON.stringify(se
 function freshJob() {
   return {
     phase: 'home', // home | script | review-script | storyboard | review-sb | video | done | error
-    product: { mode: 'product', name: '', desc: '', audience: '', packLook: '', personLook: '', refPath: '', personRefs: [] },
+    product: { mode: 'product', name: '', desc: '', audience: '', packLook: '', personLook: '', refPath: '', personRefs: [], extraRefs: [] },
     note: '',
     narrationSource: 'manual', // manual | ai-brief
     story: '',
@@ -1063,8 +1068,11 @@ const server = http.createServer(async (req, res) => {
           job.product.mode = mode;
           if (mode === 'course') { job.product.refPath = ''; job.product.refName = ''; job.product.packLook = ''; }
           if (mode === 'product') { job.product.personRefs = []; }
+          // ຮູບສິນຄ້າເພີ່ມ (extraRefs) ມີແຕ່ໂໝດສິນຄ້າ — ໂໝດອື່ນລ້າງ
+          if (mode !== 'product') { job.product.extraRefs = []; }
         }
         if (!Array.isArray(job.product.personRefs)) job.product.personRefs = [];
+        if (!Array.isArray(job.product.extraRefs)) job.product.extraRefs = [];
         if (b.note !== undefined && b.note !== job.note) { job.note = skill.thaiToLao(skill.stripAICitations(b.note)); job.narrationSource = 'manual'; }
         job.story = b.story !== undefined ? skill.thaiToLao(skill.stripAICitations(b.story)) : job.story;
         job.brief = b.brief ?? job.brief; saveJob(); return send(res, 200, { ok: true });
@@ -1162,7 +1170,24 @@ const server = http.createServer(async (req, res) => {
         saveJob();
         return send(res, 200, { ok: true, count: paths.length, paths });
       }
-      if (p === '/api/ref-info') return send(res, 200, { path: job.product.refPath || '', name: job.product.refName || '', personRefs: job.product.personRefs || [], mode: job.product.mode || 'product' });
+      if (p === '/api/upload-extra-refs') {
+        // b: { images: [{dataUrl, filename}] } — ຮູບສິນຄ້າເພີ່ມ (ໂໝດສິນຄ້າ), ແທນລາຍເກົ່າ, ສູງສຸດ 4 (ຮວມຮູບຫຼັກ = 5)
+        const imgs = Array.isArray(b.images) ? b.images.slice(0, 4) : [];
+        for (const old of (job.product.extraRefs || [])) { try { fs.rmSync(old); } catch { /* ignore */ } }
+        const paths = [];
+        for (let i = 0; i < imgs.length; i++) {
+          const m = /^data:image\/(png|jpe?g|webp);base64,(.+)$/i.exec((imgs[i] && imgs[i].dataUrl) || '');
+          if (!m) return send(res, 200, { ok: false, error: `ຮູບສິນຄ້າເພີ່ມລຳດັບ ${i + 1} ບໍ່ຖືກຕ້ອງ (PNG/JPG/WEBP)` });
+          const ext = m[1].toLowerCase().replace('jpeg', 'jpg');
+          const outPath = F(`product-extra-${i + 1}.${ext}`);
+          fs.writeFileSync(outPath, Buffer.from(m[2], 'base64'));
+          paths.push(outPath);
+        }
+        job.product.extraRefs = paths;
+        saveJob();
+        return send(res, 200, { ok: true, count: paths.length, paths });
+      }
+      if (p === '/api/ref-info') return send(res, 200, { path: job.product.refPath || '', name: job.product.refName || '', personRefs: job.product.personRefs || [], extraRefs: job.product.extraRefs || [], mode: job.product.mode || 'product' });
       if (p === '/api/start') {
         if (isBusy()) return send(res, 200, { ok: false, error: 'ຍັງບໍ່ວ່າງ' });
         {

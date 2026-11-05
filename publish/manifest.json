@@ -1,11 +1,11 @@
 {
-  "rev": 1,
-  "notes": "ທົດສອບ publish",
-  "at": "2026-11-05T10:42:59.813Z",
+  "rev": 2,
+  "notes": "ໂໝດສິນຄ້າ ອັບຮູບສິນຄ້າໄດ້ຫຼາຍຮູບ (1-5) ຄືໂໝດຄົນລິວິວ",
+  "at": "2026-11-05T13:03:06.705Z",
   "files": {
     "server.js": {
-      "sha256": "9e45cf3363643184ca48c23fa9b7bb4dd06d162c3f04538916a22c6485f715d4",
-      "bytes": 106707
+      "sha256": "3197d7d2af55266eabd0fb9265e93d3eef361c95509e77723c4a4fee3116e570",
+      "bytes": 108495
     },
     "worker.js": {
       "sha256": "054ba3f17a3deefaf962b63dd7dd6ba75547ace1541b91c986911afda30b9010",
@@ -24,8 +24,8 @@
       "bytes": 2159
     },
     "ui.html": {
-      "sha256": "16b296563f32339a9bc00e703f3403f35a6b58fd966894a41bd6b58fb94c1fff",
-      "bytes": 95300
+      "sha256": "a10361315420cf545784edf4f4db5ee851938d7364d4f0f7138c4bcd9c09a52b",
+      "bytes": 97235
     },
     "selectors.json": {
       "sha256": "0238f145398f22a1e66e8f47fb65d1632dd0fad6a9d42c9b7142fe4e915234d4",
