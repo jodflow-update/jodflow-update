@@ -1,0 +1,35 @@
+{
+  "rev": 1,
+  "notes": "ທົດສອບ publish",
+  "at": "2026-11-05T10:42:59.813Z",
+  "files": {
+    "server.js": {
+      "sha256": "9e45cf3363643184ca48c23fa9b7bb4dd06d162c3f04538916a22c6485f715d4",
+      "bytes": 106707
+    },
+    "worker.js": {
+      "sha256": "054ba3f17a3deefaf962b63dd7dd6ba75547ace1541b91c986911afda30b9010",
+      "bytes": 175582
+    },
+    "skill.js": {
+      "sha256": "98578f92ff1be67fa72b209f3f699752f87651c5c9395cc906f075495f2d22de",
+      "bytes": 105261
+    },
+    "hero.js": {
+      "sha256": "fe2eaf7b08bdd10f38e8394c54ceb0165f7e3b38b61a5bf00696bb93608c5446",
+      "bytes": 12463
+    },
+    "cdp-port.js": {
+      "sha256": "f867ae7e00b9db71a566f80887c867fb18adec9bb01102f5e8dc89ba41b0e235",
+      "bytes": 2159
+    },
+    "ui.html": {
+      "sha256": "16b296563f32339a9bc00e703f3403f35a6b58fd966894a41bd6b58fb94c1fff",
+      "bytes": 95300
+    },
+    "selectors.json": {
+      "sha256": "0238f145398f22a1e66e8f47fb65d1632dd0fad6a9d42c9b7142fe4e915234d4",
+      "bytes": 6006
+    }
+  }
+}
