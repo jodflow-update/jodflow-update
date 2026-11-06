@@ -1,15 +1,15 @@
 {
-  "rev": 2,
-  "notes": "ໂໝດສິນຄ້າ ອັບຮູບສິນຄ້າໄດ້ຫຼາຍຮູບ (1-5) ຄືໂໝດຄົນລິວິວ",
-  "at": "2026-11-05T13:03:06.705Z",
+  "rev": 3,
+  "notes": "ແກ້ Gemini (setter ທຸກ model, ແຊັດໃໝ່, ปฏิเสธ→ลองอีกครั้ง), ປິດ auto-AI-repair, ຣີເຊັດທັງໝົດປຸ່ມດຽວ, popup ງາມ (toast/modal)",
+  "at": "2026-11-06T07:02:06.680Z",
   "files": {
     "server.js": {
-      "sha256": "3197d7d2af55266eabd0fb9265e93d3eef361c95509e77723c4a4fee3116e570",
-      "bytes": 108495
+      "sha256": "277e80729f4a6b4a4dd1a068572ba82ae4238bedef9015e10349464b452f56c5",
+      "bytes": 109238
     },
     "worker.js": {
-      "sha256": "054ba3f17a3deefaf962b63dd7dd6ba75547ace1541b91c986911afda30b9010",
-      "bytes": 175582
+      "sha256": "58244fde6bbde7e553658c3a47dd52879314e29bd2a09db05c1e942c15264c69",
+      "bytes": 176282
     },
     "skill.js": {
       "sha256": "98578f92ff1be67fa72b209f3f699752f87651c5c9395cc906f075495f2d22de",
@@ -24,8 +24,8 @@
       "bytes": 2159
     },
     "ui.html": {
-      "sha256": "a10361315420cf545784edf4f4db5ee851938d7364d4f0f7138c4bcd9c09a52b",
-      "bytes": 97235
+      "sha256": "601b268dd09746e148214f27810d0950b70c2e65fad1993161a7a6b1f81902a6",
+      "bytes": 100750
     },
     "selectors.json": {
       "sha256": "0238f145398f22a1e66e8f47fb65d1632dd0fad6a9d42c9b7142fe4e915234d4",

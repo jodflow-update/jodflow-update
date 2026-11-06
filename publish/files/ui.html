@@ -216,8 +216,7 @@ button.is-busy::after{content:"";position:absolute;inset:0;margin:auto;width:17p
             <div class="sep"></div>
             <small>ລະບົບ</small>
             <button id="checkUpdateBtn" onclick="checkUpdate()">ກວດອັບເດດ</button>
-            <button onclick="restartApp()">Restart ບັອດ</button>
-            <button class="danger" onclick="if(confirm('ຣີເຊັດວຽກທັງໝົດ? ຂໍ້ມູນທີ່ເຮັດມາຈະຫາຍ'))runAction(this,'/api/reset')">ຣີເຊັດທັງໝົດ</button>
+            <button class="danger" onclick="resetAll()">ຣີເຊັດທັງໝົດ</button>
           </div>
         </div>
         <button class="danger-button" id="stopBtn" onclick="stopWork()" disabled><span>■</span> ຢຸດວຽກ</button>
@@ -456,16 +455,29 @@ async function healthCheck() {
     const h = await r.json();
     if (!r.ok || !h.capabilities?.includes('expand-brief')) throw new Error('backend ເກົ່າ');
   } catch {
-    el('err').textContent = 'Backend ຍັງເປັນເວີຊັນເກົ່າ — ກົດ “Restart ບັອດ” ຫຼືເປີດຕົວເປີດ JOD FLOW ໃໝ່.';
+    el('err').textContent = 'Backend ຍັງເປັນເວີຊັນເກົ່າ — ປິດແລ້ວເປີດຕົວເປີດ JOD FLOW ໃໝ່.';
   }
 }
 async function restartApp() {
-  if (!confirm('Restart JOD FLOW ເພື່ອໃຊ້ໂຄດໃໝ່?')) return;
+  if (!(await uiConfirm('Restart JOD FLOW?\nເພື່ອໃຊ້ໂຄດໃໝ່', { okText: 'Restart' }))) return;
   try {
     await api('/api/restart');
     setTimeout(() => location.reload(), 2500);
   } catch {
     alert('ບັອດເວີຊັນເກົ່າຍັງບໍ່ມີປຸ່ມ restart. ປິດແລ້ວເປີດຕົວເປີດ JOD FLOW ໃໝ່.');
+  }
+}
+// ຣີເຊັດທັງໝົດ: ລ້າງຂໍ້ຄວາມ+ຮູບ+ວຽກທັງໝົດ, restart ບັອດ, ແລ້ວກັບມາຢູ່ໜ້າ "ສ້າງຊຸດວິດີໂອ" (ບໍ່ເດັ້ງກັບ ພາບລວມ)
+async function resetAll() {
+  if (!(await uiConfirm('ຣີເຊັດທັງໝົດ?\nຂໍ້ຄວາມ, ຮູບ ແລະ ວຽກທັງໝົດຈະຫາຍ', { okText: 'ຣີເຊັດ', danger: true }))) return;
+  el('toolMenu')?.classList.remove('open');
+  try {
+    await api('/api/reset', { full: true });   // ລ້າງຂໍ້ມູນ+ຮູບທັງໝົດ
+    try { sessionStorage.setItem('jodLandCreate', '1'); } catch {}
+    try { await api('/api/restart'); } catch {}  // restart ບັອດ (ແລ້ວ reload = ຟອມສະອາດ)
+    setTimeout(() => location.reload(), 2500);
+  } catch (e) {
+    toast('ຣີເຊັດບໍ່ສຳເລັດ: ' + (e && e.message || e), 'err');
   }
 }
 async function stopWork() {
@@ -897,7 +909,7 @@ async function approveScript(auto) {
   const saved = await api('/api/edit-script', { script });
   // ຂໍ້ຜິດເກນເປັນພຽງຄຳເຕືອນ: ຜູ້ໃຊ້ຍັງສາມາດສ້າງຕໍ່ໄດ້.
   // ບໍ່ສະແດງ popup ແລະບໍ່ຢຸດ workflow; ຄຳເຕືອນຍັງເຫັນຢູ່ໃນໜ້າກວດສະຄຣິບ.
-  if (auto && !confirm('ໂໝດອັດຕະໂນມັດ: ສ້າງ 3 ແຜ່ນ Storyboard ແລ້ວຕໍ່ 3 ວິດີໂອເອງທັນທີ ໂດຍບໍ່ຢຸດໃຫ້ກວດແຜ່ນ.\nໃຊ້ເຄຣດິດ Flow ທັງໝົດຕໍ່ເນື່ອງ. ເອົາບໍ?')) return;
+  if (auto && !(await uiConfirm('ໂໝດອັດຕະໂນມັດ?\nສ້າງ 3 ແຜ່ນ Storyboard ແລ້ວຕໍ່ 3 ວິດີໂອເອງທັນທີ ໂດຍບໍ່ຢຸດໃຫ້ກວດແຜ່ນ. ໃຊ້ເຄຣດິດ Flow ທັງໝົດຕໍ່ເນື່ອງ.', { okText: 'ເອົາເລີຍ' }))) return;
   const r = await api('/api/approve-script', { auto: !!auto });
   if (r && r.ok === false) { alert('ສ້າງ Storyboard ບໍ່ໄດ້: ' + (r.error || '')); }
   pull();
@@ -1040,12 +1052,51 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') el('toolMenu
 
 // ຂໍ້ຄວາມລອຍ — ແທນ alert() ທີ່ຂັດຈັງຫວະ
 function toast(text, kind = '', ms = 4200) {
-  const box = el('toasts'); if (!box) return alert(text);
+  const box = el('toasts'); if (!box) return;
   const t = document.createElement('div');
   t.className = 'toast' + (kind ? ' ' + kind : '');
+  t.style.whiteSpace = 'pre-line';
   t.textContent = text;
   box.appendChild(t);
   setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, ms);
+}
+
+// ປ່ຽນ popup ແບບ browser (alert/confirm) ເປັນແບບງາມເຂົ້າກັບ theme ບັອດ
+// alert → toast ລອຍງາມ (ແກ້ທຸກບ່ອນພ້ອມກັນ)
+window.alert = function (msg) {
+  const s = String(msg == null ? '' : msg);
+  const ok = /✓|ສຳເລັດ|ກຳລັງ|ລໍຖ້າ|ພ້ອມແລ້ວ/.test(s);
+  toast(s, ok ? 'ok' : 'err', 5200);
+};
+// confirm → modal ງາມ (Promise<boolean>). ໃຊ້: if (!(await uiConfirm('...'))) return;
+function uiConfirm(message, opts = {}) {
+  const { okText = 'ຕົກລົງ', cancelText = 'ຍົກເລີກ', danger = false, icon = danger ? '⚠' : '?' } = opts;
+  return new Promise(resolve => {
+    const lines = String(message).split('\n');
+    const head = lines.shift() || 'ຢືນຢັນ';
+    const back = document.createElement('div');
+    back.className = 'modal-backdrop open';
+    back.innerHTML = '<div class="modal" role="dialog" aria-modal="true">'
+      + '<div class="modal-symbol"></div><h2></h2><p></p>'
+      + '<div><button class="soft-button" data-act="cancel"></button>'
+      + '<button data-act="ok"></button></div></div>';
+    back.querySelector('.modal-symbol').textContent = icon;
+    back.querySelector('h2').textContent = head;
+    const p = back.querySelector('p'); p.style.whiteSpace = 'pre-line'; p.textContent = lines.join('\n');
+    back.querySelector('[data-act=cancel]').textContent = cancelText;
+    const okBtn = back.querySelector('[data-act=ok]');
+    okBtn.textContent = okText; okBtn.className = danger ? 'danger-button' : 'primary-button';
+    const close = v => { back.remove(); document.removeEventListener('keydown', onKey); resolve(v); };
+    back.addEventListener('click', e => {
+      if (e.target === back) return close(false);
+      const act = e.target.closest('[data-act]') && e.target.closest('[data-act]').dataset.act;
+      if (act === 'ok') close(true); else if (act === 'cancel') close(false);
+    });
+    const onKey = e => { if (e.key === 'Escape') close(false); else if (e.key === 'Enter') close(true); };
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(back);
+    okBtn.focus();
+  });
 }
 
 // ກົດປຸ່ມ → ໝຸນທັນທີ ຈົນວຽກຈົບ
@@ -1064,7 +1115,7 @@ async function runAction(btn, path, body) {
 
 // ສືບຕໍ່ຕໍ່ຄລິບ — ໃຊ້ຕອນຄລິບຄົບແລ້ວແຕ່ບັອດຄ້າງກ່ອນຕໍ່/ດາວໂຫຼດ
 async function resumeCombine() {
-  if (!confirm('ສືບຕໍ່ຕໍ່ຄລິບ ແລະ ດາວໂຫຼດ?\nໃຊ້ຄລິບທີ່ມີຢູ່ແລ້ວ ບໍ່ສ້າງວິດີໂອໃໝ່.')) return;
+  if (!(await uiConfirm('ສືບຕໍ່ຕໍ່ຄລິບ ແລະ ດາວໂຫຼດ?\nໃຊ້ຄລິບທີ່ມີຢູ່ແລ້ວ ບໍ່ສ້າງວິດີໂອໃໝ່', { okText: 'ສືບຕໍ່' }))) return;
   const btn = el('resumeBtn');
   el('toolMenu')?.classList.remove('open');
   await withBusy(btn, async () => {
@@ -1092,7 +1143,7 @@ async function checkUpdate() {
 
 // ກວດຄລິບໃນ Flow: ຖ້າຍັງບໍ່ຄົບ 3 → ສ້າງສ່ວນທີ່ຂາດຕໍ່ → ຕໍ່ຄລິບ 1→2→3 ແລ້ວດາວໂຫຼດ
 async function checkVideoClips() {
-  if (!confirm('ກວດຄລິບໃນ Flow?\nຖ້າຍັງບໍ່ຄົບ 3 ຄລິບ ບັອດຈະສ້າງສ່ວນທີ່ຂາດ ແລ້ວຕໍ່ 1→2→3 ແລະດາວໂຫຼດໃຫ້ອັດຕະໂນມັດ.')) return;
+  if (!(await uiConfirm('ກວດຄລິບໃນ Flow?\nຖ້າຍັງບໍ່ຄົບ 3 ຄລິບ ບັອດຈະສ້າງສ່ວນທີ່ຂາດ ແລ້ວຕໍ່ 1→2→3 ແລະດາວໂຫຼດໃຫ້ອັດຕະໂນມັດ', { okText: 'ກວດເລີຍ' }))) return;
   const btn = el('checkClipsBtn');
   el('toolMenu')?.classList.remove('open');
   await withBusy(btn, async () => {
@@ -1195,6 +1246,8 @@ function goTo(name) {
 }
 document.querySelectorAll('.nav-item[data-page]').forEach(i => i.addEventListener('click', () => goTo(i.dataset.page)));
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => goTo(b.dataset.go)));
+// ຫຼັງ "ຣີເຊັດທັງໝົດ" (reset+restart+reload) → ລ້ອງໃສ່ໜ້າ "ສ້າງຊຸດວິດີໂອ" ແທນ dashboard default
+try { if (sessionStorage.getItem('jodLandCreate')) { sessionStorage.removeItem('jodLandCreate'); goTo('create'); } } catch {}
 document.getElementById('menuButton')?.addEventListener('click', () => document.getElementById('sidebar').classList.toggle('open'));
 
 // ພາກວຽກປ່ຽນ → ພາໄປໜ້າ wizard ເອງ ຜູ້ໃຊ້ບໍ່ຕ້ອງຫາ

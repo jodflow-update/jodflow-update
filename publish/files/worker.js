@@ -479,8 +479,11 @@ async function configureGemini(pg) {
     return false;
   };
   const modelTrigger = async () => {
-    let trigger = await visibleLast(pg.getByRole('button', { name: /Flash-Lite|Flash Lite|Gemini/i }));
-    if (!trigger) trigger = await visibleLast(pg.locator('button').filter({ hasText: /Flash-Lite|Flash Lite/i }));
+    // ປຸ່ມເລືອກ model ມີ aria-haspopup ແລະ ຂໍ້ຄວາມເປັນຊື່ model ປັດຈຸບັນ (Flash-Lite/Flash/Pro).
+    // ຕ້ອງຈັບທຸກ model — ບໍ່ດັ່ງນັ້ນເມື່ອ chat ຢູ່ Flash/Pro ປຸ່ມບໍ່ມີຄຳ "Flash-Lite" ຈະຫາບໍ່ເຫັນ → error.
+    let trigger = await visibleLast(pg.locator('button[aria-haspopup="true"]').filter({ hasText: /Flash-Lite|Flash Lite|Flash|Pro/i }));
+    if (!trigger) trigger = await visibleLast(pg.getByRole('button', { name: /Flash-Lite|Flash Lite|Flash|Pro|Gemini/i }));
+    if (!trigger) trigger = await visibleLast(pg.locator('button').filter({ hasText: /Flash-Lite|Flash Lite|Flash|Pro/i }));
     return trigger;
   };
   const waitForModelTrigger = async () => {
@@ -505,7 +508,13 @@ async function configureGemini(pg) {
   }
   await trigger.click({ timeout: 5000 }).catch(() => {});
   await sleep(350);
-  const modelSet = await clickText([wantedModel, wantedModel.replace('3.5 ', '')]);
+  // ລອງ exact ກ່ອນ ແລ້ວ fallback ເປັນ substring — ລາຍການເມນູມີຄຳອະທິບາຍຕໍ່ທ້າຍ ("3.5 Flash-Lite คำตอบที่เร็วที่สุด")
+  let modelSet = await clickText([wantedModel, wantedModel.replace('3.5 ', '')]);
+  if (!modelSet) {
+    const esc = wantedModel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const opt = await visibleLast(pg.locator('[role="menuitem"],[role="menuitemradio"],[role="option"],button').filter({ hasText: new RegExp(esc, 'i') }));
+    if (opt) modelSet = await opt.click({ timeout: 3000 }).then(() => true).catch(() => false);
+  }
   if (!modelSet) {
     await pg.keyboard.press('Escape').catch(() => {});
     log(`Gemini setting: ເລືອກ model ${wantedModel} ບໍ່ໄດ້`);
@@ -525,7 +534,7 @@ async function configureGemini(pg) {
   }
   await sleep(300);
   const lowLabels = wantedThinking === 'low' ? ['ต่ำ', 'Low', 'ຕ່ຳ'] : [cfg.geminiThinking];
-  const thinkingSet = await clickText(lowLabels);
+  const thinkingSet = await clickText(lowLabels, false);  // non-exact: ລາຍການມີຄຳອະທິບາຍຕໍ່ທ້າຍ
   await pg.keyboard.press('Escape').catch(() => {});
   if (!thinkingSet) {
     log('Gemini setting: ເລືອກລະດັບຄິດຕ່ຳບໍ່ໄດ້');
@@ -610,9 +619,21 @@ async function cmdAsk() {
     await pg.goto(urls[aiKey] || urls.claude, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await sleep(3000);
   }
-  if (autoNewChat) {
-    const fresh = { claude: 'https://claude.ai/new', chatgpt: 'https://chatgpt.com/', gemini: 'https://gemini.google.com/app' };
+  if (autoNewChat && aiKey !== 'gemini') {
+    const fresh = { claude: 'https://claude.ai/new', chatgpt: 'https://chatgpt.com/' };
     await pg.goto(fresh[aiKey] || fresh.claude, { waitUntil: 'domcontentloaded' });
+  }
+  // Gemini: ໄປ /app ເປີດ "ແຊັດລ້າສຸດ" ບໍ່ແມ່ນແຊັດໃໝ່ — ຕ້ອງກົດປຸ່ມ "ແຊັດໃໝ່" ເອງ.
+  // ເຮັດທຸກຄັ້ງທີ່ບໍ່ແມ່ນ continuation ທີ່ລັອກໄວ້ (lockUrl) — ກັນການໃຊ້ແຊັດເກົ່າທີ່ຄ້າງຢູ່.
+  if (aiKey === 'gemini' && !lockUrl) {
+    const nc = pg.locator('a[aria-label="แชทใหม่"], a[aria-label="ແຊທໃໝ່"], a[aria-label="New chat"], button[aria-label="แชทใหม่"], button[aria-label="New chat"]').first();
+    if (await nc.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await nc.click({ timeout: 5000 }).catch(() => {});
+      await sleep(1800);
+      log('Gemini: ເປີດແຊັດໃໝ່ແລ້ວ');
+    } else {
+      log('Gemini: ບໍ່ພົບປຸ່ມແຊັດໃໝ່ — ໃຊ້ແຊັດປັດຈຸບັນ');
+    }
   }
   await pg.bringToFront();
   // ວາງຂໍ້ຄວາມ ແລະ ສົ່ງ
@@ -650,7 +671,7 @@ async function cmdAsk() {
   // ລະວັງ: prompt ຂອງເຮົາເອງກໍເປັນ code block ທີ່ມີ "JOD FLOW SCRIPT", "Shot 1", "Shot 12"
   // ຖ້າບໍ່ກວດຈຳນວນ shot ບັອດຈະເກັບ prompt ຕົນເອງມາແທນຄຳຕອບ AI (ໄດ້ແຕ່ placeholder)
   // ສະນັ້ນ: ຮັບສະເພາະບລັອກທີ່ມີ Shot 1..12 ຄົບ ແລະ ບໍ່ມີຂໍ້ຄວາມ template
-  let answer = '', stable = 0, sawPartial = 0, safetyRetried = false;
+  let answer = '', stable = 0, sawPartial = 0, regenTried = false;
   let deadline = Date.now() + 300000;
   while (Date.now() < deadline) {
     await sleep(3000);
@@ -739,52 +760,31 @@ async function cmdAsk() {
     if (got.aiErr && !got.text) {
       log(`AI ຕອບບໍ່ໄດ້: "${got.aiErr}"`);
       sendEv('ASK_AI_ERROR', { reason: got.aiErr });
-      if (aiKey === 'gemini' && !briefMode && !safetyRetried) {
-        safetyRetried = true;
-        log('Gemini ປະຕິເສດ — ເປີດແຊັດໃໝ່ ແລະປັບສະເພາະຄຳສ່ຽງອັດຕະໂນມັດ');
-        const safeMsg = msg
-          .replace(/ຮັກສາ|ປິ່ນປົວ|ຫາຍຂາດ|ໄດ້ຜົນແນ່ນອນ/g, 'ນຳສະເໜີຕາມຂໍ້ມູນໃນສະຫຼາກ')
-          .replace(/ນົກເຂົາບໍ່ຂັນ|ຂຶ້ນຊ້າ|ຫຼັ່ງໄວ|ຕໍ່ຮອບ\s*[ສອງ2]\s*ຮອບ\s*[ສາມ3]?/g, 'ບັນຫາສຸຂະພາບສ່ວນຕົວຂອງຜູ້ໃຫຍ່')
-          .replace(/รักษา|หายขาด|ได้ผลแน่นอน|หลั่งเร็ว|เสื่อมสมรรถภาพ/g, 'นำเสนอตามข้อมูลบนฉลากโดยไม่รับประกันผล')
-          .replace(/cure|guaranteed results?|erectile dysfunction|premature ejaculation/gi, 'general adult wellness support described on the label');
-        const retryMsg = [
-          safeMsg,
-          '',
-          'SAFETY-SAFE REVISION RULE:',
-          '- Present the product only according to information on its label. Do not claim treatment, cure, guaranteed results, or medical certainty.',
-          '- Remove explicit sexual descriptions and use neutral, non-graphic adult-wellness wording.',
-          '- If any remaining claim is unsafe, revise only that wording. Preserve the original 12-shot structure, characters, locations, action order, CTA, and Shot 12 Hero ending.',
-          '- Return the complete requested output, not an explanation of these changes.'
-        ].join('\n');
-        await pg.goto('https://gemini.google.com/app', { waitUntil: 'domcontentloaded' }).catch(() => {});
-        await pg.locator(inputSel).first().waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
-        await sleep(1000);
-        // ຕັ້ງບໍ່ໄດ້ກໍບໍ່ຢຸດ — ໃຊ້ model ປັດຈຸບັນຕໍ່
-        const ok2 = await configureGemini(pg).catch(() => false);
-        if (!ok2 && briefMode) {
-          log('Gemini setting (retry): ຕັ້ງຄ່າສຳລັບ brief ບໍ່ໄດ້ — ບໍ່ສົ່ງຊ້ຳ');
-          await b.close();
-          process.exit(9);
+      if (aiKey === 'gemini' && !regenTried) {
+        regenTried = true;
+        // ຕາມທີ່ຜູ້ໃຊ້ຕ້ອງການ: ເມື່ອ Gemini ປະຕິເສດ ໃຫ້ກົດ "ทำซ้ำ (↻) → ลองอีกครั้ง" 1 ເທື່ອ
+        // (ບໍ່ສົ່ງ prompt ປັບແກ້ໃໝ່ — ແຄ່ regenerate ຄຳຕອບເກົ່າຄືນໃນແຊັດດຽວກັນ)
+        log('Gemini ປະຕິເສດ — ກົດ "ทำซ้ำ → ลองอีกครั้ง" 1 ເທື່ອ');
+        const regen = pg.locator('model-response').last()
+          .locator('button[aria-label="ทำซ้ำ"], button[aria-label="Regenerate"], button[aria-label="Regenerate draft"]').first();
+        if (await regen.isVisible({ timeout: 5000 }).catch(() => false)) {
+          await regen.scrollIntoViewIfNeeded().catch(() => {});
+          await regen.click().catch(() => {});
+          await sleep(1200);
+          const tryAgain = pg.locator('[role="menuitem"]:has-text("ลองอีกครั้ง"), [role="menuitem"]:has-text("Try again"), button:has-text("ลองอีกครั้ง")').first();
+          if (await tryAgain.isVisible({ timeout: 4000 }).catch(() => false)) {
+            await tryAgain.click().catch(() => {});
+            log('ກົດ "ลองอีกครั้ง" ແລ້ວ — ລໍຄຳຕອບໃໝ່');
+            answer = ''; stable = 0; sawPartial = 0;
+            deadline = Date.now() + 300000;
+            continue;
+          }
+          await pg.keyboard.press('Escape').catch(() => {});
         }
-        if (!ok2) log('Gemini setting (retry): ຕັ້ງບໍ່ໄດ້ — ໃຊ້ model ປັດຈຸບັນຕໍ່');
-        beforeBlocks = await pg.evaluate(() =>
-          Array.from(document.querySelectorAll('pre code, code, pre')).map(e => (e.innerText || e.textContent || '').trim())
-        ).catch(() => []);
-        if (refImg && !briefMode && !(await attachToChat(pg, refImg))) {
-          sendEv('REFERENCE_MISSING', { kind: 'ai-script-retry', reason: 'Gemini did not visibly accept product image' });
-          await b.close();
-          process.exit(8);
-        }
-        await pg.locator(inputSel).first().click({ timeout: 15000 });
-        await pg.keyboard.insertText(retryMsg);
-        await sleep(500);
-        await pg.keyboard.press('Enter');
-        answer = ''; stable = 0; sawPartial = 0;
-        deadline = Date.now() + 300000;
-        continue;
+        log('Gemini: ບໍ່ພົບປຸ່ມ "ทำซ้ำ/ลองอีกครั้ง" — ຢຸດ (ໃຫ້ຜູ້ໃຊ້ແກ້ເອງ)');
       }
       await b.close();
-      process.exit(6);
+      process.exit(briefMode ? 9 : 6);
     }
     if (!got.text) {
       if (got.shots > sawPartial) { sawPartial = got.shots; log(`AI ກຳລັງຂຽນ... ${got.shots}/12 shot`); }

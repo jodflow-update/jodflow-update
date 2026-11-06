@@ -602,10 +602,11 @@ async function stepStoryboard(resumeFrom = 1) {
       m = line.match(/@@SHEET_DONE (.+)$/);
       if (m) { try { job.sheetsDone = JSON.parse(m[1]).n; saveJob(); } catch { /* ignore */ } }
     }, code => {
-      if (code === 3 && policyReason && retries < MAX_POLICY_RETRIES) {
-        const shots4 = job.script.slice((policyN - 1) * 4, policyN * 4);
-        logLn(`Storyboard ${policyN} ຖືກ Flow ບລັອກ (${policyReason}) — ຂຽນໃໝ່ ແລະ ລອງອີກ (${retries + 1}/${MAX_POLICY_RETRIES})`);
-        rewriteShotsAndRetry(shots4, policyReason, () => runBatch(policyN, retries + 1));
+      if (code === 3 && policyReason) {
+        // ຜູ້ໃຊ້ຕ້ອງການແກ້ເອງ — ບໍ່ສົ່ງ prompt ທີ່ຖືກປະຕິເສດໄປໃຫ້ AI ຂຽນ SCENE ໃໝ່ອັດຕະໂນມັດ
+        job.error = `Flow ປະຕິເສດຮູບ Storyboard ${policyN}: ${policyReason} — ກະລຸນາແກ້ SCENE/ສິນຄ້າເອງ ແລ້ວກົດສ້າງ Storyboard ໃໝ່`;
+        logLn(`Storyboard ${policyN} ຖືກ Flow ບລັອກ (${policyReason}) — ຢຸດ ໃຫ້ຜູ້ໃຊ້ແກ້ເອງ (ບໍ່ສົ່ງ AI)`);
+        setPhase('error');
         return;
       }
       if (code === 4) logLn('ລໍແລ້ວບໍ່ເຫັນຮູບໃໝ່ — ຢຸດຊຸດນີ້');
@@ -1591,9 +1592,18 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true, stopped: wasBusy });
       }
       if (p === '/api/reset') {
-        // ລ້າງບົດ/ແຜ່ນ/ຄລິບ ແຕ່ເກັບຂໍ້ມູນສິນຄ້າໄວ້ (ຊື່ ຄຳບັນຍາຍ ລັກສະນະກ່ອງ ຮູບອ້າງອີງ)
-        // ເພາະສິນຄ້າເປັນອັນເກົ່າທຸກຮອບ — ບໍ່ດັ່ງນັ້ນຕ້ອງພິມໃໝ່ ແລະ ອັບຮູບໃໝ່ທຸກເທື່ອ
+        // b.full === true → ຣີເຊັດທັງໝົດ (ລວມຂໍ້ມູນສິນຄ້າ: ຊື່ ຄຳບັນຍາຍ ຮູບທຸກຮູບ).
+        // ປົກກະຕິ (ບໍ່ full) → ລ້າງບົດ/ແຜ່ນ/ຄລິບ ແຕ່ເກັບສິນຄ້າໄວ້ໃຊ້ຊ້ຳ.
         killWorker();
+        if (b.full) {
+          // ລຶບໄຟລ໌ຮູບອ້າງອີງທັງໝົດຖິ້ມ ເພື່ອໃຫ້ "ຮູບ" ຣີເຊັດແທ້
+          for (const f of [...(job.product.personRefs || []), ...(job.product.extraRefs || []), job.product.refPath]) {
+            try { if (f) fs.rmSync(f); } catch { /* ບໍ່ມີກໍຂ້າມ */ }
+          }
+          job = freshJob();   // freshJob ຕັ້ງ product ເປົ່າໝົດ
+          saveJob();
+          return send(res, 200, { ok: true, full: true });
+        }
         const keepProduct = job.product;
         job = freshJob();
         job.product = { ...job.product, ...keepProduct };
