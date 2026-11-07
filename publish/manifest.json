@@ -1,19 +1,19 @@
 {
-  "rev": 3,
-  "notes": "ແກ້ Gemini (setter ທຸກ model, ແຊັດໃໝ່, ปฏิเสธ→ลองอีกครั้ง), ປິດ auto-AI-repair, ຣີເຊັດທັງໝົດປຸ່ມດຽວ, popup ງາມ (toast/modal)",
-  "at": "2026-11-06T07:02:06.680Z",
+  "rev": 5,
+  "notes": "ແກ້ Flow project ເກົ່າຄ້າງ/ເລືອກ tab ຜິດ + Gemini API (ແຕ່ລະເຄື່ອງໃສ່ key ເອງ) + ໂໝດ API/ເວັບ + ແຖບຄືບໜ້າ",
+  "at": "2026-11-07T02:07:59.575Z",
   "files": {
     "server.js": {
-      "sha256": "277e80729f4a6b4a4dd1a068572ba82ae4238bedef9015e10349464b452f56c5",
-      "bytes": 109238
+      "sha256": "c3fa101153c48279f41a6a2a6ff09ecd53caeffe53b393170e18051168277034",
+      "bytes": 112600
     },
     "worker.js": {
-      "sha256": "58244fde6bbde7e553658c3a47dd52879314e29bd2a09db05c1e942c15264c69",
-      "bytes": 176282
+      "sha256": "17245efe448e711b654dd2da4a1868ef321a36fca5a4e705859caa6d62f01956",
+      "bytes": 181945
     },
     "skill.js": {
-      "sha256": "98578f92ff1be67fa72b209f3f699752f87651c5c9395cc906f075495f2d22de",
-      "bytes": 105261
+      "sha256": "f4d3ea99d9aa5d2008b0ae4bde14a24604ba443baf01d12090c1bc97b3143658",
+      "bytes": 106652
     },
     "hero.js": {
       "sha256": "fe2eaf7b08bdd10f38e8394c54ceb0165f7e3b38b61a5bf00696bb93608c5446",
@@ -24,12 +24,16 @@
       "bytes": 2159
     },
     "ui.html": {
-      "sha256": "601b268dd09746e148214f27810d0950b70c2e65fad1993161a7a6b1f81902a6",
-      "bytes": 100750
+      "sha256": "14ca3d751fbed0ff8bc8aa1912d640faee8a860008c68e73e62a7edf864cfc9a",
+      "bytes": 112228
     },
     "selectors.json": {
       "sha256": "0238f145398f22a1e66e8f47fb65d1632dd0fad6a9d42c9b7142fe4e915234d4",
       "bytes": 6006
+    },
+    "gemini-api.js": {
+      "sha256": "d5795bbeb0fff3d34c9858e54402648797540e1f08bc3400469c2b360c797afe",
+      "bytes": 5095
     }
   }
 }

@@ -35,7 +35,7 @@ const VERSION = '1.1.7';
 const CAPABILITIES = ['expand-brief', 'health', 'restart', 'storyboard-product-video-references'];
 
 // ---------- state ----------
-const DEFAULT_SETTINGS = { ai: CFG.aiDefault || 'claude', secondsPerShot: CFG.secondsPerShot, speakerRatio: 0.70, autoNewProject: true, autoUpdate: true };
+const DEFAULT_SETTINGS = { ai: CFG.aiDefault || 'claude', secondsPerShot: CFG.secondsPerShot, speakerRatio: 0.70, autoNewProject: true, autoUpdate: true, geminiApiKey: '', geminiApiModel: 'gemini-3.1-flash-lite', useApi: true };
 let settings = DEFAULT_SETTINGS;
 try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(F('settings.json'), 'utf8')) }; } catch { /* ຄ່າເລີ່ມຕົ້ນ */ }
 function saveSettings() { fs.writeFileSync(F('settings.json'), JSON.stringify(settings, null, 2)); }
@@ -92,6 +92,7 @@ if (job.phase === 'done' && job.finalFile && fs.existsSync(job.finalFile)) job.e
 // Remove AI citation chips from persisted dialogue created by older versions,
 // so restarting the updated app also repairs the current visible form.
 let removedLegacyCitations = false;
+let normalizedLegacyScript = false;
 if (Array.isArray(job.script)) {
   job.script = job.script.map(s => {
     const text = skill.stripAICitations(s.text);
@@ -99,6 +100,11 @@ if (Array.isArray(job.script)) {
     if (text !== String(s.text ?? '') || scene !== String(s.scene ?? '')) removedLegacyCitations = true;
     return { ...s, text, scene };
   });
+  if (job.script.length) {
+    const normalized = skill.ensureTwelveShots(job.script);
+    if (JSON.stringify(normalized) !== JSON.stringify(job.script)) normalizedLegacyScript = true;
+    job.script = normalized;
+  }
 }
 const cleanLoadedNote = skill.stripAICitations(job.note);
 if (cleanLoadedNote !== String(job.note ?? '')) removedLegacyCitations = true;
@@ -126,7 +132,7 @@ function saveJob() {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   atomicWriteJson(F('job.json'), job);
 }
-if (removedLegacyCitations) saveJob();
+if (removedLegacyCitations || normalizedLegacyScript) saveJob();
 function scheduleJobSave() {
   if (saveTimer) return;
   saveTimer = setTimeout(() => { saveTimer = null; saveJob(); }, 500);
@@ -186,7 +192,7 @@ function parseBriefSections(raw) {
   const marker = /^[ \t]*={2,}[ \t]*(NAME|DESC|STORY|NARRATION)[ \t]*={2,}[ \t]*$/gim;
   const found = [];
   for (let m = marker.exec(text); m; m = marker.exec(text)) {
-    found.push({ key: m[1].toUpperCase(), from: m.index + m[0].length });
+    found.push({ key: m[1].toUpperCase(), from: m.index + m[0].length, start: m.index });
   }
   if (!found.length) return null;
   const out = {};
@@ -194,6 +200,13 @@ function parseBriefSections(raw) {
     const end = i + 1 < found.length ? text.lastIndexOf('\n', found[i + 1].from - 1) : text.length;
     out[sec.key.toLowerCase()] = text.slice(sec.from, end).replace(/^\n+/, '').trim();
   });
+  // AI (ໂດຍສະເພາະ Flash-Lite) ບາງຄັ້ງຕົກ marker ===NAME=== ແລ້ວໃສ່ຊື່ສິນຄ້າລອຍໆເທິງສຸດ
+  // ກ່ອນ ===DESC===. ຮັບກໍລະນີນີ້: ເອົາແຖວທຳອິດທີ່ບໍ່ວ່າງກ່ອນ marker ທຳອິດ ເປັນຊື່.
+  if (!out.name) {
+    const before = text.slice(0, found[0].start).replace(/```[a-z]*/gi, '').trim();
+    const nameLine = before.split('\n').map(s => s.trim()).filter(Boolean)[0] || '';
+    if (nameLine) out.name = nameLine;
+  }
   if (keys.some(k => !out[k.toLowerCase()])) return null;
   return out;
 }
@@ -310,6 +323,7 @@ if (job.busy) {
 
 // ---------- worker (CLI) ----------
 let children = {}; // { workerId: process, ... }
+let projectRotationTimer = null;
 function runWorker(args, onLine, onExit, workerId = 'default') {
   if (children[workerId]) return false;
   const startedAt = Date.now();
@@ -449,7 +463,9 @@ async function stepScript(retry = 0, lockUrl = '') {
 
 function startAutoScriptPipeline(lockUrl) {
   const ref = job.product.refPath;
-  if (!ref || !fs.existsSync(ref) || !lockUrl) {
+  // ໂໝດ API ບໍ່ມີ "AI ແຊັດ URL" (ແຕ່ລະຄຳເອີ້ນເປັນອິດສະຫຼະ) — ຈຶ່ງບໍ່ບັງຄັບ lockUrl
+  const apiMode = !!(settings.ai === 'gemini' && settings.geminiApiKey && settings.useApi !== false);
+  if (!ref || !fs.existsSync(ref) || (!lockUrl && !apiMode)) {
     job.error = 'NOT VERIFIED: ຂາດຮູບສິນຄ້າ ຫຼື AI ແຊັດທີ່ລັອກໄວ້';
     setPhase('error'); return;
   }
@@ -843,14 +859,30 @@ function resetFlowProjectOutputs(nextUrl) {
 
 // ຫຼັງດາວໂຫຼດຈົບ: ປິດ project ເກົ່າ (ກັບ home) ແລ້ວສ້າງ project ໃໝ່ ເພື່ອໃຫ້ຮອບ
 // ຕໍ່ໄປເລີ່ມໃນ project ສະອາດໂດຍບໍ່ຕ້ອງໃຫ້ຜູ້ໃຊ້ມາເປີດເອງ. ເປີດ/ປິດໄດ້ທີ່ settings.
-function rotateProjectAfterDownload() {
+function rotateProjectAfterDownload(attempt = 0) {
   if (settings.autoNewProject === false) return;
-  if (isBusy()) return;   // ຢ່າຊ້ອນກັບວຽກທີ່ກຳລັງແລ່ນ
+  // The combine worker can finish its download a fraction before every worker
+  // handle has been released.  Previously that made this return permanently,
+  // leaving the old Flow project open.  Queue one bounded retry instead.
+  if (isBusy()) {
+    if (attempt >= 20) {
+      logLn('ສ້າງ project ໃໝ່ບໍ່ທັນໄດ້ — worker ອື່ນຍັງເຮັດວຽກຢູ່');
+      return;
+    }
+    if (!projectRotationTimer) {
+      if (attempt === 0) logLn('ດາວໂຫຼດແລ້ວ — ລໍ worker ຈົບກ່ອນຈຶ່ງປິດ project ເກົ່າ');
+      projectRotationTimer = setTimeout(() => {
+        projectRotationTimer = null;
+        rotateProjectAfterDownload(attempt + 1);
+      }, 500);
+    }
+    return;
+  }
   const oldUrl = job.projectUrl || '';
   logLn('ກຳລັງປິດ project ເກົ່າ ແລະ ສ້າງ project ໃໝ່ສຳລັບຮອບຕໍ່ໄປ...');
   let newUrl = '';
   let newProjectReason = '';
-  runWorker(['new-project', oldUrl], line => {
+  const started = runWorker(['new-project', oldUrl], line => {
     const m = line.match(/@@NEW_PROJECT (.+)$/);
     if (m) {
       try {
@@ -859,15 +891,16 @@ function rotateProjectAfterDownload() {
         else if (o.reason) newProjectReason = String(o.reason);
       } catch { /* ignore */ }
     }
-  }, () => {
+  }, code => {
     if (!newUrl) {
-      logLn(`ສ້າງ project ໃໝ່ບໍ່ສຳເລັດ${newProjectReason ? `: ${newProjectReason}` : ''} — ຮອບໜ້າໃຫ້ເປີດ project ໃນ Flow ເອງ`);
+      logLn(`ສ້າງ project ໃໝ່ບໍ່ສຳເລັດ${newProjectReason ? `: ${newProjectReason}` : ''} (code=${code}) — ຮອບໜ້າໃຫ້ເປີດ project ໃນ Flow ເອງ`);
       return;
     }
     resetFlowProjectOutputs(newUrl);
     saveJob();
     logLn('ພ້ອມຮອບຕໍ່ໄປ: project ໃໝ່ ' + newUrl);
   }, 'new-project');
+  if (!started) rotateProjectAfterDownload(attempt + 1);
 }
 
 // ---------- HTTP ----------
@@ -903,7 +936,8 @@ function publicState() {
     sheetsDone: job.sheetsDone, clipsDone: job.clipsDone,
     policyWaitClip: job.policyWaitClip || 0,
     project: job.project, projectUrl: job.projectUrl || '',
-    settings, busy: job.busy || isBusy(), continuity: job.continuity || '', continuityErrs: job.continuityErrs || [], auto: !!job.auto,
+    // ສົ່ງພຽງຈຳນວນ * ໄປ UI; ບໍ່ສົ່ງ API key ຈິງອອກຈາກ server.
+    settings: { ...settings, geminiApiKey: settings.geminiApiKey ? '*'.repeat(settings.geminiApiKey.length) : '' }, apiActive: !!(settings.ai === 'gemini' && settings.geminiApiKey && settings.useApi !== false), busy: job.busy || isBusy(), continuity: job.continuity || '', continuityErrs: job.continuityErrs || [], auto: !!job.auto,
     clipTitles: job.clipTitles || [], sceneUrl: job.sceneUrl || '', finalFile: job.finalFile || '',
     hasHero: !!(job.heroPath && fs.existsSync(job.heroPath)),
     update: { ...upd.state, auto: settings.autoUpdate !== false },
@@ -986,7 +1020,21 @@ const server = http.createServer(async (req, res) => {
         }, 'sync-project');
         return send(res, 202, { ok: true, started: true });
       }
-      if (p === '/api/settings') { settings = { ...settings, ...b }; saveSettings(); return send(res, 200, { ok: true }); }
+      if (p === '/api/settings') {
+        // ຢ່າໃຫ້ຄ່າ mask "*****" ຂຽນທັບ key ຈິງ; ຖ້າສົ່ງ key ໃໝ່ມາ ໃຫ້ trim
+        const keyMask = settings.geminiApiKey ? '*'.repeat(settings.geminiApiKey.length) : '';
+        if (b.geminiApiKey === keyMask || b.geminiApiKey === '••••••') delete b.geminiApiKey;
+        if (typeof b.geminiApiKey === 'string') b.geminiApiKey = b.geminiApiKey.trim();
+        settings = { ...settings, ...b }; saveSettings(); return send(res, 200, { ok: true });
+      }
+      if (p === '/api/verify-gemini-key') {
+        const key = String(b.key || settings.geminiApiKey || '').trim();
+        if (!key) return send(res, 200, { ok: false, error: 'ຍັງບໍ່ໄດ້ໃສ່ API key' });
+        try {
+          const models = await require('./gemini-api.js').verifyKey(key);
+          return send(res, 200, { ok: true, count: models.length });
+        } catch (e) { return send(res, 200, { ok: false, error: String(e && e.message || e).slice(0, 150) }); }
+      }
       if (p === '/api/resume-combine') {
         // ຄລິບສ້າງຄົບແລ້ວ ແຕ່ຍັງບໍ່ໄດ້ຕໍ່ — ສືບຕໍ່ ບໍ່ຕ້ອງສ້າງວິດີໂອໃໝ່
         if (isBusy()) return send(res, 409, { ok: false, error: 'ມີວຽກກຳລັງແລ່ນຢູ່' });

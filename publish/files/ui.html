@@ -134,6 +134,10 @@ button.is-busy::after{content:"";position:absolute;inset:0;margin:auto;width:17p
   border-radius:12px;transition:color .2s}
 .mode-pill .mi{font-size:17px}
 .mode-pill.on{color:#fff}
+/* ===== ຕົວສະຫຼັບ API/ເວັບ (ໃນແຜງ API Key) ===== */
+.api-mode-switch{display:flex;gap:0;padding:5px;background:var(--panel2);border:1px solid var(--line);border-radius:14px}
+.api-mode-switch button{flex:1;border:0;background:transparent;color:var(--muted);font-weight:700;font-size:11px;cursor:pointer;border-radius:10px;padding:10px 8px;transition:all .22s var(--ease)}
+.api-mode-switch button.on{background:linear-gradient(135deg,var(--purple),var(--purple2));color:#fff;box-shadow:0 6px 18px rgba(114,58,222,.33)}
 .mode-pill:hover:not(.on){color:var(--text)}
 .mode-hint{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:13px;margin-bottom:8px;
   border:1px solid var(--line2);background:linear-gradient(135deg,rgba(157,92,255,.1),rgba(110,60,255,.03));
@@ -233,6 +237,28 @@ button.is-busy::after{content:"";position:absolute;inset:0;margin:auto;width:17p
           <div id="err"></div>
         </div>
         <button class="primary-button" data-go="create">+ ໄປໜ້າສ້າງວິດີໂອ</button>
+      </div>
+
+      <div class="panel" style="padding:18px;margin-bottom:16px">
+        <div style="font-weight:700;font-size:13px">🔑 Gemini API Key
+          <span id="apiStatusBadge" style="font-size:9px;margin-left:8px;padding:2px 8px;border-radius:20px"></span>
+        </div>
+        <small style="color:var(--muted);font-size:9px;display:block;margin-top:3px">ເລືອກໂໝດ: <b>API</b> (ສະຖຽນ+ໄວ, ມີແຖບຄືບໜ້າ) ຫຼື <b>ໜ້າເວັບ</b> (ເບິ່ງແຊັດ Gemini ເອງ). API ເອົາ key ຟຣີທີ່ aistudio.google.com/apikey. (Flow ຍັງເປັນ web ສະເໝີ)</small>
+        <div class="api-mode-switch" style="max-width:320px;margin-top:11px">
+          <button type="button" id="modeApiBtn" onclick="setAiMode(true)">⚡ ໃຊ້ API</button>
+          <button type="button" id="modeWebBtn" onclick="setAiMode(false)">🌐 ໃຊ້ໜ້າເວັບ</button>
+        </div>
+        <div class="row" id="apiKeyRow" style="gap:8px;margin-top:11px;flex-wrap:wrap;align-items:center">
+          <input id="apiKeyInput" type="password" placeholder="ວາງ API key ທີ່ນີ້ (AIza…)" autocomplete="off" onfocus="beginApiKeyEdit()" onblur="restoreApiKeyMask()" style="flex:2;min-width:200px"/>
+          <select id="apiModelSelect" style="width:auto">
+            <option value="gemini-3.1-flash-lite">3.1 Flash-Lite — ໄວ (ແນະນຳ)</option>
+            <option value="gemini-3-flash-preview">3 Flash — ແຮງກວ່າ</option>
+            <option value="gemini-3.1-pro-preview">3.1 Pro — ແຮງສຸດ</option>
+            <option value="gemini-flash-latest">Flash (latest)</option>
+          </select>
+          <button class="soft-button" onclick="testApiKey(this)">ທົດສອບ</button>
+          <button class="primary-button" onclick="saveApiKey(this)">ບັນທຶກ</button>
+        </div>
       </div>
 
       <div class="metric-grid">
@@ -372,6 +398,40 @@ button.is-busy::after{content:"";position:absolute;inset:0;margin:auto;width:17p
             <div class="thumb-grid" id="tgPersonC"></div>
             <div class="zone-count" id="zcPersonC"></div>
           </div>
+          <style>
+          .job-progress{border:1px solid #50336c;border-radius:16px;background:linear-gradient(145deg,rgba(40,24,60,.55),rgba(20,13,30,.55));padding:15px 17px;margin-top:16px;animation:fadeUp .3s ease}
+          .job-progress.err{border-color:rgba(255,111,145,.5);background:rgba(255,111,145,.07)}
+          .jp-head{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+          .jp-head strong{font-size:12px;flex:1}
+          .jp-pct{font-size:14px;font-weight:800;color:var(--lavender)}
+          .job-progress.err .jp-pct{color:var(--red)}
+          .jp-spin{width:15px;height:15px;border-radius:50%;border:2px solid rgba(157,92,255,.25);border-top-color:var(--purple);animation:jpspin .8s linear infinite;flex:0 0 auto}
+          .job-progress.err .jp-spin{display:none}
+          .job-progress.complete{border-color:rgba(66,214,164,.48);background:linear-gradient(145deg,rgba(20,67,53,.42),rgba(14,35,31,.42))}
+          .job-progress.complete .jp-spin{display:none}
+          .job-progress.complete .jp-pct{color:var(--green)}
+          .job-progress.complete .progress i{background:var(--green)!important;box-shadow:0 0 13px rgba(66,214,164,.65)}
+          .job-progress.paused{border-color:rgba(255,196,84,.5);background:linear-gradient(145deg,rgba(60,46,20,.5),rgba(28,22,12,.5))}
+          .job-progress.paused .jp-spin{display:none}
+          .job-progress.paused .jp-pct{color:#ffc454}
+          .jp-pause{display:none;font-size:15px;flex:0 0 auto}
+          .job-progress.paused .jp-pause{display:inline}
+          .job-progress.paused .progress i{background:#ffc454!important}
+          .job-progress small{color:var(--muted);font-size:9px;display:block;margin-top:9px;line-height:1.6}
+          @keyframes jpspin{to{transform:rotate(360deg)}}
+          #apiStatusBadge.on{animation:apipulse 2.2s infinite}
+          @keyframes apipulse{0%,100%{box-shadow:0 0 0 0 rgba(66,214,164,.4)}50%{box-shadow:0 0 0 6px rgba(66,214,164,0)}}
+          </style>
+          <div class="job-progress" id="jobProgress" style="display:none">
+            <div class="jp-head">
+              <span class="jp-spin" id="jpSpin"></span>
+              <span class="jp-pause">⏸</span>
+              <strong id="jpStage">ກຳລັງເຮັດວຽກ...</strong>
+              <span class="jp-pct" id="jpPct">0%</span>
+            </div>
+            <div class="progress"><i id="jpBar" style="width:0%"></i></div>
+            <small id="jpMsg"></small>
+          </div>
           <label style="display:flex;align-items:center;gap:9px;cursor:pointer;margin-top:16px">
             <input type="checkbox" id="autoNewProject" onchange="saveAutoNewProject()" style="width:auto;margin:0" checked />
             <span style="font-weight:600">ຫຼັງດາວໂຫຼດຈົບ ໃຫ້ປິດ project ເກົ່າ ແລະ ສ້າງ project ໃໝ່ເອງ</span>
@@ -479,6 +539,129 @@ async function resetAll() {
   } catch (e) {
     toast('ຣີເຊັດບໍ່ສຳເລັດ: ' + (e && e.message || e), 'err');
   }
+}
+// ── Gemini API key (ໜ້າ ພາບລວມ) ──
+async function saveApiKey(btn) {
+  const input = el('apiKeyInput');
+  const rawKey = input.value.trim();
+  const key = isMaskedApiKey(input) ? '' : rawKey;
+  const model = el('apiModelSelect').value;
+  await withBusy(btn, async () => {
+    try {
+      const body = { geminiApiModel: model };
+      if (key) { body.geminiApiKey = key; body.ai = 'gemini'; }  // ໃສ່ key = ໃຊ້ Gemini API
+      await api('/api/settings', body);
+      el('apiKeyInput').value = '';
+      toast(key ? 'ບັນທຶກ API key ແລ້ວ — ບັອດຈະໃຊ້ API' : 'ບັນທຶກ model ແລ້ວ', 'ok');
+      pull();
+    } catch (e) { toast('ບັນທຶກບໍ່ສຳເລັດ: ' + (e && e.message || e), 'err'); }
+  });
+}
+async function testApiKey(btn) {
+  const input = el('apiKeyInput');
+  const rawKey = input.value.trim();
+  const key = isMaskedApiKey(input) ? '' : rawKey;
+  await withBusy(btn, async () => {
+    try {
+      const r = await api('/api/verify-gemini-key', key ? { key } : {});
+      if (r && r.ok) toast('✓ API key ໃຊ້ໄດ້ (' + r.count + ' models)', 'ok');
+      else toast('key ໃຊ້ບໍ່ໄດ້: ' + (r && r.error || ''), 'err');
+    } catch (e) { toast('ທົດສອບບໍ່ໄດ້: ' + (e && e.message || e), 'err'); }
+  });
+}
+function isMaskedApiKey(input) {
+  return !!(input && input.dataset.keyMask && input.value === input.dataset.keyMask);
+}
+function beginApiKeyEdit() {
+  const input = el('apiKeyInput');
+  if (!input) return;
+  if (isMaskedApiKey(input)) input.value = '';
+  input.type = 'password';
+}
+function restoreApiKeyMask() {
+  const input = el('apiKeyInput');
+  if (!input || input.value) return;
+  const mask = input.dataset.keyMask || '';
+  if (mask) { input.type = 'text'; input.value = mask; }
+}
+// ສະຫຼັບໂໝດ API / ໜ້າເວັບ
+async function setAiMode(useApi) {
+  try {
+    const body = { useApi: !!useApi };
+    if (useApi) body.ai = 'gemini';   // ໃຊ້ API ຕ້ອງເປັນ gemini
+    await api('/api/settings', body);
+    toast(useApi ? 'ປ່ຽນເປັນໂໝດ API ແລ້ວ' : 'ປ່ຽນເປັນໂໝດໜ້າເວັບ Gemini ແລ້ວ', 'ok');
+    pull();
+  } catch (e) { toast('ປ່ຽນໂໝດບໍ່ສຳເລັດ: ' + (e && e.message || e), 'err'); }
+}
+function syncApiKey(s) {
+  const st = s.settings || {};
+  const useApi = st.useApi !== false;        // ໂໝດທີ່ຜູ້ໃຊ້ເລືອກ
+  const active = s.apiActive;                 // API ເຮັດວຽກຈິງ (gemini+key+useApi)
+  // ປຸ່ມສະຫຼັບໂໝດ
+  const bApi = el('modeApiBtn'), bWeb = el('modeWebBtn');
+  if (bApi) bApi.classList.toggle('on', useApi);
+  if (bWeb) bWeb.classList.toggle('on', !useApi);
+  // ແຖວ key: ສະແດງສະເພາະໂໝດ API
+  const row = el('apiKeyRow'); if (row) row.style.display = useApi ? '' : 'none';
+  const badge = el('apiStatusBadge');
+  if (badge) {
+    const txt = !useApi ? '○ ໃຊ້ໜ້າເວັບ' : (active ? '● ໃຊ້ API ຢູ່' : '⚠ ຍັງບໍ່ມີ key');
+    badge.textContent = txt;
+    badge.style.background = active ? 'rgba(66,214,164,.15)' : (useApi ? 'rgba(255,196,84,.15)' : 'rgba(255,255,255,.06)');
+    badge.style.color = active ? 'var(--green)' : (useApi ? '#ffc454' : 'var(--muted)');
+    badge.classList.toggle('on', active);
+  }
+  const inp = el('apiKeyInput');
+  if (inp && document.activeElement !== inp && (!inp.value || isMaskedApiKey(inp))) {
+    const mask = String(st.geminiApiKey || '');
+    inp.dataset.keyMask = mask;
+    inp.value = mask;
+    inp.type = mask ? 'text' : 'password';
+    inp.placeholder = mask ? 'API key ຖືກປິດບັງໄວ້' : 'ວາງ API key ທີ່ນີ້ (AIza…)';
+  }
+  const sel = el('apiModelSelect');
+  if (sel && document.activeElement !== sel && st.geminiApiModel) sel.value = st.geminiApiModel;
+}
+// ── ແຖບວິເຄາະ (ໜ້າ create) — ນັບສະເພາະ ບັນຈຸພັນ → ບົດເລື່ອງ → ຄຳເວົ້າ ──
+function syncJobProgress(s) {
+  const card = el('jobProgress'); if (!card) return;
+  const ph = s.phase || '', msg = String(s.msg || '');
+  const isPackageAnalysis = ph === 'script' && /ອ່ານຮູບສິນຄ້າ|ວິເຄາະ.*(?:ສິນຄ້າ|ບັນຈຸພັນ)/.test(msg);
+  const isAnalysisError = ph === 'error' && !s.sheetsDone && !s.clipsDone && !s.projectUrl;
+  let pct = 0, stage = '', detail = '', show = true, err = false, complete = false;
+
+  // ຫ້າມເອົາ Storyboard, Video, Flow ຫຼືການດາວໂຫຼດ ມານັບໃນແຖບນີ້.
+  if (isAnalysisError) {
+    err = true;
+    stage = 'ວິເຄາະບໍ່ສຳເລັດ — ເບິ່ງຂໍ້ຄວາມລຸ່ມ';
+    pct = 100;
+    detail = s.error || '';
+  } else if (isPackageAnalysis) {
+    stage = 'ຂັ້ນ 1/3 — ກຳລັງວິເຄາະບັນຈຸພັນສິນຄ້າ';
+    pct = 34;
+    detail = 'ກວດຮູບຮ່າງ ແລະ ລາຍລະອຽດຈາກຮູບສິນຄ້າ.';
+  } else if (ph === 'script') {
+    stage = 'ຂັ້ນ 2/3 — ກຳລັງຄິດບົດເລື່ອງ';
+    pct = 67;
+    detail = 'ກຳລັງກຳນົດເນື້ອເລື່ອງ ແລະ ຈັດເຕັມຄຳເວົ້າໃຫ້ເໝາະກັບແຕ່ລະ shot.';
+  } else if (ph === 'review-script') {
+    complete = true;
+    stage = 'ສຳເລັດ 3/3 — ວິເຄາະ, ບົດເລື່ອງ ແລະ ຄຳເວົ້າພ້ອມແລ້ວ';
+    pct = 100;
+    detail = 'ແຖບນີ້ຈົບສະເພາະວຽກວິເຄາະ. Storyboard ແລະ Video ເປັນຂັ້ນຕອນອື່ນ ບໍ່ຖືກນັບລວມ.';
+  } else {
+    show = false;
+  }
+  card.style.display = show ? 'block' : 'none';
+  if (!show) return;
+  card.classList.toggle('err', err);
+  card.classList.toggle('paused', false);
+  card.classList.toggle('complete', complete);
+  el('jpStage').textContent = stage;
+  el('jpPct').textContent = pct + '%';
+  el('jpBar').style.width = pct + '%';
+  el('jpMsg').textContent = detail;
 }
 async function stopWork() {
   const b = el('stopBtn');
@@ -651,7 +834,7 @@ function saveAutoNewProject() {
 }
 function render() {
   const s = STATE;
-  try { syncPage(s); syncSidebar(s); } catch (e) { /* UI ໃໝ່ຍັງບໍ່ພ້ອມ */ }
+  try { syncPage(s); syncSidebar(s); syncApiKey(s); syncJobProgress(s); } catch (e) { /* UI ໃໝ່ຍັງບໍ່ພ້ອມ */ }
   // sync ຄ່າ checkbox ຈາກ server (ຢ່າຂຽນທັບຕອນຜູ້ໃຊ້ກຳລັງກົດ)
   const anp = el('autoNewProject');
   if (anp && s.settings && document.activeElement !== anp) {

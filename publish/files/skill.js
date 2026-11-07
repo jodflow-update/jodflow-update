@@ -125,7 +125,7 @@ function buildScriptRequest(product, note, aiName, story) {
   const dialogueBlock = (note && note.trim())
     ? `\n*** ບົດເວົ້າທີ່ຜູ້ໃຊ້ໃຫ້ມາ (DIALOGUE AUTHORITY LOCK — ຮັກສາຄຳ ແລະຄວາມໝາຍ; ຫ້າມປ່ຽນເປັນບົດບັນລະຍາຍ) ***\n${note.trim()}\n*** ຈົບບົດເວົ້າ ***\n\nແບ່ງເນື້ອຫາເປັນບົດສົນທະນາຂອງຄົນໃນສາກສຳລັບ Shot 1-11. ແຕ່ລະ shot ມີປະໂຫຍກສົມບູນ: ເປົ້າໝາຍ 8-12 ພະຍາງ, ຍອມຮັບ 6-14. Shot 12 ຍັງເປັນພາບ Hero ສິນຄ້າລ້ວນບໍ່ມີຄົນ ແຕ່ອະນຸຍາດສຽງ brand voice CTA ໃນເກນດຽວກັນ. CTA ປິດການຂາຍຢູ່ Shot 11 ຫຼື Shot 12 ໄດ້. ຮັກສາລຳດັບ ແລະຄວາມໝາຍເດີມ.\n`
     : `\n(ຜູ້ໃຊ້ບໍ່ໄດ້ໃຫ້ບົດເວົ້າ — ນຳຈຸດຂາຍ/ສັບພະຄຸນທີ່ຜູ້ໃຊ້ໃຫ້ມາສ້າງເປັນບົດສົນທະນາສຳລັບ Shot 1-11; ເປົ້າໝາຍ 8-12 ພະຍາງ, ຍອມຮັບ 6-14. Shot 12 ເປັນພາບ Hero ສິນຄ້າລ້ວນ ແຕ່ມີສຽງ brand voice CTA ໄດ້.)\n`;
-  return `ຕອບເປັນໂຄດ markdown ບລັອກດຽວຕາມແບບທີ່ບອກ. ຂຽນສະຄຣິບສິນຄ້າ 12 shot, 3 ຄລິບ (ຄລິບລະ 4 shot, shot ລະ 2.5 ວິນາທີ, ຄລິບລະ 10 ວິ). Shot 1-11 ເປັນບົດສົນທະນາທີ່ຄົນເຫັນໃນສາກເວົ້າຈິງ; Shot 12 ເປັນພາບ Hero ສິນຄ້າລ້ວນບໍ່ມີຄົນ ແຕ່ມີສຽງ brand voice CTA ໄດ້. ຫ້າມ narrator/voice-over ໃນ Shot 1-11; ຍົກເວັ້ນສຽງ brand CTA ຂອງ Shot 12:
+  return `ຕອບເປັນໂຄດ markdown ບລັອກດຽວຕາມແບບທີ່ບອກ. ຂຽນສະຄຣິບສິນຄ້າ 12 shot, 3 ຄລິບ (ຄລິບລະ 4 shot, shot ລະ 2.5 ວິນາທີ, ຄລິບລະ 10 ວິ). *** HARD COMPLETION GATE: ຄຳຕອບໃຊ້ບໍ່ໄດ້ຖ້າບໍ່ມີ Shot 1 ຫາ Shot 12 ຄົບຢ່າງລະ 1 ຄັ້ງ. ກ່ອນສົ່ງໃຫ້ນັບ 1 ຫາ 12 ແລະກວດວ່າ Shot 12 ມີບົດສຽງ CTA ພາສາລາວບໍ່ແມ່ນຊ່ອງວ່າງ. *** Shot 1-11 ເປັນບົດສົນທະນາທີ່ຄົນເຫັນໃນສາກເວົ້າຈິງ; Shot 12 ເປັນພາບ Hero ສິນຄ້າລ້ວນບໍ່ມີຄົນ ແຕ່ມີສຽງ brand voice CTA ໄດ້. ຫ້າມ narrator/voice-over ໃນ Shot 1-11; ຍົກເວັ້ນສຽງ brand CTA ຂອງ Shot 12:
 
 ສິນຄ້າ: ${name}
 ລາຍລະອຽດ: ${desc}
@@ -188,7 +188,7 @@ SCENE: Medium close-up at eye level, slow push-in. Nang Mali, woman 32, in a pal
 
 ຕອນນີ້ຂຽນແບບດຽວກັນນີ້ໃຫ້ຄົບ 12 shot ຈິງ (ບໍ່ແມ່ນຕົວຢ່າງຂ້າງເທິງ — ຕ້ອງເປັນເນື້ອຫາໃໝ່ຕາມສິນຄ້າ/ເລື່ອງຂ້າງເທິງ):
 
-ຮູບແບບຜົນ (ຕອບບລັອກນີ້ຢ່າງດຽວ ບໍ່ຕ້ອງອະທິບາຍເພີ່ມ ຂຽນຄົບ 12 shot ຫ້າມຫຍໍ້):
+ຮູບແບບຜົນ (ຕອບບລັອກນີ້ຢ່າງດຽວ ບໍ່ຕ້ອງອະທິບາຍເພີ່ມ ຂຽນຄົບ 12 shot ຫ້າມຫຍໍ້; ບໍ່ອະນຸຍາດໃຫ້ Shot 12 ວ່າງ):
 \`\`\`jodflow
 # JOD FLOW SCRIPT
 Product: ${name}
@@ -213,7 +213,7 @@ SCENE: (ຂຽນ English scene ຈິງ)
 ---
 (ຂຽນ Shot 3, Shot 4, Shot 5 ... ຕໍ່ໄປຮອດ Shot 12 ແບບດຽວກັນ ແຕ່ລະ shot ຄັ່ນດ້ວຍ --- ຫ້າມຂ້າມ ຫ້າມຫຍໍ້)
 Shot 12 | presenter | 2.5s
-
+ທັກເຂົ້າມາສັ່ງໄດ້ເລີຍ
 SCENE: macro hero product-only shot, no humans, slow linear push-in, dark premium background
 \`\`\``;
 }
@@ -376,6 +376,29 @@ function continuityIssues(continuity) {
   return issues;
 }
 
+// Keep all twelve form fields visible even if an AI response omits a block.
+// Missing content stays blank; the app must never invent dialogue for it.
+function ensureTwelveShots(shots) {
+  const byShot = new Map();
+  for (const source of Array.isArray(shots) ? shots : []) {
+    const shot = Number(source?.shot);
+    if (!Number.isInteger(shot) || shot < 1 || shot > 12 || byShot.has(shot)) continue;
+    const seconds = Number(source.seconds);
+    byShot.set(shot, {
+      ...source,
+      shot,
+      role: String(source.role || 'presenter').toLowerCase(),
+      seconds: Number.isFinite(seconds) && seconds > 0 ? seconds : 2.5,
+      text: String(source.text || ''),
+      scene: String(source.scene || ''),
+    });
+  }
+  return Array.from({ length: 12 }, (_, index) => {
+    const shot = index + 1;
+    return byShot.get(shot) || { shot, role: 'presenter', seconds: 2.5, text: '', scene: '' };
+  });
+}
+
 function parseScript(raw) {
   const m = String(raw || '').match(/```jodflow\s*([\s\S]*?)```/i);
   const body = (m ? m[1] : raw || '').trim();
@@ -392,7 +415,7 @@ function parseScript(raw) {
     const text = thaiToLao(stripAICitations(rest.replace(/^SCENE:.*$/im, '')));
     shots.push({ shot: Number(h[1]), role: h[2].toLowerCase(), seconds: Number(h[3]), text, scene });
   }
-  return shots.sort((a, b) => a.shot - b.shot);
+  return ensureTwelveShots(shots);
 }
 
 // ກວດສະຄຣິບ: ຄົບ 12 shot ແລະພະຍາງພໍດີ.
@@ -896,6 +919,6 @@ Shot <ເລກ>: <ຂໍ້ຄວາມລາວໃໝ່>`;
 module.exports = {
   countLaoSyllables, syllableBudget, fits, DEFAULT_SPEAKERS,
   stripAICitations,
-  buildScriptRequest, buildBriefExpansionRequest, buildBriefRepairRequest, parseScript, parseContinuity, continuityIssues, dialogueIssues, requiredDialogueErrors, validateScript, buildRewriteRequest, buildSyllableFixRequest, thaiToLao, thaiLeftovers,
+  buildScriptRequest, buildBriefExpansionRequest, buildBriefRepairRequest, parseScript, ensureTwelveShots, parseContinuity, continuityIssues, dialogueIssues, requiredDialogueErrors, validateScript, buildRewriteRequest, buildSyllableFixRequest, thaiToLao, thaiLeftovers,
   FLOW_LOCKS, buildFlowClipPrompt, buildFlowStoryboardPrompt,
 };

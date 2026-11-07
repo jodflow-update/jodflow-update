@@ -19,6 +19,22 @@ const profileDir = path.join(DATA, 'chrome-profile');
 const { resolveCdpPort, saveCdpPort } = require('./cdp-port.js');
 let PORT = resolveCdpPort();
 
+// ── Gemini API (ແທນ web ເມື່ອຕັ້ງ key ໄວ້) ──
+// require ແບບປອດໄພ: ຖ້າ gemini-api.js ຍັງບໍ່ມີ (ເຄື່ອງທີ່ auto-update ມາແຕ່ worker.js
+// ແຕ່ຍັງບໍ່ reinstall) → geminiApi = null → ບັອດຕົກໄປໃຊ້ web ຄືເກົ່າ (ບໍ່ crash).
+let geminiApi = null;
+try { geminiApi = require('./gemini-api.js'); } catch { /* ບໍ່ມີໄຟລ໌ — ໃຊ້ web */ }
+function userSettings() { try { return JSON.parse(fs.readFileSync(path.join(DATA, 'settings.json'), 'utf8')); } catch { return {}; } }
+// ຄືນ {key, model} ຖ້າໃຊ້ Gemini ແລະ ຕັ້ງ API key ໄວ້ ແລະ ມີ module; ບໍ່ດັ່ງນັ້ນ null (ໃຊ້ web)
+function geminiApiCfg(aiKey) {
+  if (!geminiApi || aiKey !== 'gemini') return null;
+  const s = userSettings();
+  if (s.useApi === false) return null;   // ຜູ້ໃຊ້ເລືອກໂໝດ "ໃຊ້ໜ້າເວັບ" — ບໍ່ໃຊ້ API ເຖິງມີ key
+  const key = String(s.geminiApiKey || '').trim();
+  if (!key) return null;
+  return { key, model: String(s.geminiApiModel || 'gemini-3.1-flash-lite').trim() };
+}
+
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 const sendEv = (tag, data) => console.log(`@@${tag} ${typeof data === 'string' ? data : JSON.stringify(data)}`);
@@ -321,7 +337,13 @@ async function cmdNewProject() {
   const prevUrl = process.argv[3] || '';          // project ເກົ່າ (ກັນຈັບ URL ຊ້ຳ)
   const prevBase = prevUrl ? flowProjectBase(prevUrl) : '';
   const b = await connect();
-  let pg = (listFlowPages(b) || [])[0];
+  const flowPages = listFlowPages(b) || [];
+  // Prefer the project that was just downloaded.  When Flow and Gemini are
+  // both open, choosing the first Flow tab can close/create from the wrong
+  // project and leave the completed project on screen.
+  let pg = flowPages.find(p => prevBase && flowProjectBase(p.url()) === prevBase)
+    || flowPages.find(p => /\/scene\//.test(p.url()))
+    || flowPages[0];
   if (!pg) {
     const ctx = b.contexts()[0] || await b.newContext();
     pg = await ctx.newPage();
@@ -337,17 +359,23 @@ async function cmdNewProject() {
       'button:has-text("เสร็จสิ้น"), button:has-text("Done"), button:has-text("Finish"), ' +
       '[aria-label*="เสร็จสิ้น"], [aria-label*="Done"], [aria-label*="Finish"]'
     ).last();
+    const projectMatch = pg.url().match(/^(https:\/\/flow\.google\.com\/project\/[^/?#]+)/i);
     if (await finishBtn.isVisible({ timeout: 12000 }).catch(() => false)) {
       await finishBtn.evaluate(el => el.click()).catch(() => {});
       for (let i = 0; i < 25; i++) {
         await sleep(500);
         if (!/\/scene\//.test(pg.url())) break;
       }
-    } else {
+    }
+    // A visible Finish button can occasionally acknowledge the click without
+    // navigating.  In that case, explicitly return to this same project;
+    // never leave the old scene editor open for the next run.
+    if (/\/scene\//.test(pg.url()) && projectMatch) {
+      await pg.goto(projectMatch[1], { waitUntil: 'domcontentloaded' }).catch(() => {});
+    } else if (!projectMatch) {
       // Keep the recovery path deterministic if Flow changes the visible
       // label: return to the project URL rather than attempting a blind click.
-      const m = pg.url().match(/^(https:\/\/flow\.google\.com\/project\/[^/?#]+)/i);
-      if (m) await pg.goto(m[1], { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await pg.goto('https://flow.google.com/', { waitUntil: 'domcontentloaded' }).catch(() => {});
     }
   }
 
@@ -365,11 +393,16 @@ async function cmdNewProject() {
     await sleep(600);
     if (!/\/project\//.test(pg.url())) break;
   }
+  // Do not search for the new-project button inside the old project if the
+  // Home click was ignored by Flow's SPA.
+  if (/\/project\//.test(pg.url())) {
+    await pg.goto('https://flow.google.com/', { waitUntil: 'domcontentloaded' }).catch(() => {});
+  }
 
   // 2) ກົດສ້າງ project ໃໝ່
   const newBtn = pg.locator(
-    'button.new-project-button, button:has-text("โปรเจ็กต์ใหม่"), button:has-text("New project"), ' +
-    'button[aria-label*="โปรเจ็กต์ใหม่"], button[aria-label*="New project"]'
+    'button.new-project-button, button:has-text("โปรเจ็กต์ใหม่"), button:has-text("ໂປຣເຈັກໃໝ່"), button:has-text("New project"), ' +
+    'button[aria-label*="โปรเจ็กต์ใหม่"], button[aria-label*="ໂປຣເຈັກໃໝ່"], button[aria-label*="New project"]'
   ).first();
   // Flow home is an SPA and often paints its promotional banner before the
   // project action is usable.  Waiting for an enabled button avoids treating a
@@ -609,6 +642,30 @@ async function cmdAsk() {
   const expectedFixShots = fixMode
     ? [...msg.matchAll(/^Shot\s+(\d{1,2})\s*\(/gmi)].map(m => Number(m[1]))
     : [];
+
+  // ── Gemini API path: ສົ່ງ prompt ກົງ (ບໍ່ຕ້ອງ Chrome/web) ──
+  {
+    const api = geminiApiCfg(aiKey);
+    if (api) {
+      try {
+        log('ສົ່ງຄຳຖາມຜ່ານ Gemini API (' + api.model + ')');
+        const images = (refImg && fs.existsSync(refImg)) ? [refImg] : [];
+        const text = await geminiApi.callGemini({ apiKey: api.key, model: api.model, prompt: msg, images, temperature: briefMode ? 0.6 : 0.85, maxOutputTokens: 8192 });
+        // ຂຽນ response ລົງ outFile ຄືກັນກັບ web — server ຈະ parse ເອງ.
+        // ສຳລັບ non-brief ຫຸ້ມ ```jodflow ຖ້າ AI ບໍ່ໄດ້ໃສ່ (ຄືທີ່ web normalize)
+        let out = String(text).trim();
+        if (briefMode) out = geminiApi.extractFence(out);  // ຖອດ ``` ``` ອອກ ບໍ່ດັ່ງນັ້ນແຖວ ``` ປົນເຂົ້າ NARRATION (ກາຍ 13 ແຖວ)
+        else if (!out.startsWith('```')) out = '```jodflow\n' + out + '\n```';
+        fs.writeFileSync(outFile, out, 'utf8');
+        log('ໄດ້ຄຳຕອບ (API) ' + out.length + ' ຕົວອັກສອນ');
+        sendEv('ASK_DONE', { via: 'api', len: out.length });
+        process.exit(0);
+      } catch (e) {
+        log('Gemini API ຜິດ: ' + (e && e.message || e) + ' — ຕົກໄປໃຊ້ web');
+      }
+    }
+  }
+
   const b = await connect();
   let pg = await lockedAIPage(b, aiKey, lockUrl);
   if (!pg && lockUrl) { log('NOT VERIFIED: ບໍ່ພົບ AI ແຊັດທີ່ລັອກໄວ້'); await b.close(); process.exit(10); }
@@ -685,7 +742,9 @@ async function cmdAsk() {
       };
       const isTemplate = t => /ຂຽນປະໂຫຍກລາວຈິງ|ຂຽນ English scene ຈິງ|ຕໍ່ໄປຮອດ Shot 12/.test(t);
       const marker = label => new RegExp('^[ \\t]*={2,}[ \\t]*' + label + '[ \\t]*={2,}[ \\t]*$', 'im');
-      const hasAllMarkers = t => ['NAME', 'DESC', 'STORY', 'NARRATION'].every(k => marker(k).test(t));
+      // NAME ບໍ່ບັງຄັບ: Flash-Lite ບາງຄັ້ງຕົກ marker ===NAME=== (ໃສ່ຊື່ສິນຄ້າລອຍໆເທິງສຸດ
+      // ກ່ອນ ===DESC===). ຕ້ອງມີ DESC/STORY/NARRATION ຄົບ; ຊື່ເອົາຈາກກ່ອນ DESC (ຝັ່ງ server).
+      const hasAllMarkers = t => ['DESC', 'STORY', 'NARRATION'].every(k => marker(k).test(t));
       const blocks = Array.from(document.querySelectorAll('pre code, code, pre'))
         .map(e => e.innerText || e.textContent || '');
       const body = document.body.innerText || '';
@@ -2663,6 +2722,29 @@ async function cmdDescribePack() {
     'Keep it under 5000 characters, in English. Use the available space for precise visible package geometry and layout details, but never guess unclear text or unseen artwork. Return ONLY the description inside a ```packlook code block, with nothing before or after it.',
   ];
   const ASK = (kind === 'person' ? PERSON_ASK : PRODUCT_ASK).join('\n');
+
+  // ── Gemini API path: ວິເຄາະຮູບກົງ (ບໍ່ຕ້ອງ Chrome) ──
+  const api = geminiApiCfg(aiKey);
+  if (api) {
+    try {
+      log('ວິເຄາະຮູບຜ່ານ Gemini API (' + api.model + ')');
+      const text = await geminiApi.callGemini({ apiKey: api.key, model: api.model, prompt: ASK, images: [imgPath], temperature: 0.4, maxOutputTokens: 4096 });
+      const clean = geminiApi.extractFence(text, fence);
+      const minClean = kind === 'person' ? 60 : 120;
+      if (clean.length < minClean) { log('API: AI ບໍ່ໄດ້ຂຽນຄຳບັນຍາຍມາ'); process.exit(5); }
+      if (kind === 'person') {
+        const unclear = (clean.match(/UNCLEAR/gi) || []).length;
+        const letters = clean.replace(/UNCLEAR|IDENTITY CHECK/gi, '').replace(/[^A-Za-z]/g, '').length;
+        if (unclear >= 3 && letters < 60) { log('ຮູບຄົນອ່ານບໍ່ເຫັນຄົນ — ອາດວາງສະຫຼັບຊ່ອງ'); sendEv('PERSON_UNCLEAR', { unclear, letters }); process.exit(8); }
+      }
+      fs.writeFileSync(outFile, clean);
+      log(`ໄດ້ຄຳບັນຍາຍ${kind === 'person' ? 'ຄົນ' : 'ກ່ອງ'} (API) ${clean.length} ຕົວອັກສອນ`);
+      sendEv('PACK_DESC', { kind, chars: clean.length, via: 'api' });
+      process.exit(0);
+    } catch (e) {
+      log('Gemini API ຜິດ: ' + (e && e.message || e) + ' — ຕົກໄປໃຊ້ web');
+    }
+  }
 
   const b = await connect();
   let pg = await lockedAIPage(b, aiKey, lockUrl);
