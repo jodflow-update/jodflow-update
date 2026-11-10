@@ -35,15 +35,33 @@ const VERSION = '1.1.7';
 const CAPABILITIES = ['expand-brief', 'health', 'restart', 'storyboard-product-video-references'];
 
 // ---------- state ----------
-const DEFAULT_SETTINGS = { ai: CFG.aiDefault || 'claude', secondsPerShot: CFG.secondsPerShot, speakerRatio: 0.70, autoNewProject: true, autoUpdate: true, geminiApiKey: '', geminiApiModel: 'gemini-3.1-flash-lite', useApi: true };
+const DEFAULT_SETTINGS = { ai: CFG.aiDefault || 'claude', secondsPerShot: CFG.secondsPerShot, speakerRatio: 0.70, autoNewProject: true, autoUpdate: true, geminiApiKey: '', useApi: true };
 let settings = DEFAULT_SETTINGS;
 try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(F('settings.json'), 'utf8')) }; } catch { /* ຄ່າເລີ່ມຕົ້ນ */ }
 function saveSettings() { fs.writeFileSync(F('settings.json'), JSON.stringify(settings, null, 2)); }
 
+function emptyModeProfile(mode) {
+  return { mode, name: '', desc: '', audience: '', packLook: '', personLook: '', refPath: '', refName: '', personRefs: [], extraRefs: [], note: '', story: '', brief: '' };
+}
+const MODE_KEYS = ['product', 'review', 'course'];
+function normalizedModeProfiles(raw, activeProduct, note, story, brief) {
+  const profiles = Object.fromEntries(MODE_KEYS.map(mode => [mode, emptyModeProfile(mode)]));
+  for (const mode of MODE_KEYS) {
+    const saved = raw && raw[mode];
+    if (saved && typeof saved === 'object') profiles[mode] = { ...profiles[mode], ...saved, mode };
+  }
+  // Migrate old single-profile jobs into their saved active mode once.
+  if (!raw || !MODE_KEYS.some(mode => raw[mode])) {
+    const mode = MODE_KEYS.includes(activeProduct?.mode) ? activeProduct.mode : 'product';
+    profiles[mode] = { ...profiles[mode], ...(activeProduct || {}), mode, note: note || '', story: story || '', brief: brief || '' };
+  }
+  return profiles;
+}
 function freshJob() {
   return {
     phase: 'home', // home | script | review-script | storyboard | review-sb | video | done | error
-    product: { mode: 'product', name: '', desc: '', audience: '', packLook: '', personLook: '', refPath: '', personRefs: [], extraRefs: [] },
+    product: { mode: 'product', name: '', desc: '', audience: '', packLook: '', personLook: '', refPath: '', refName: '', personRefs: [], extraRefs: [] },
+    modeProfiles: Object.fromEntries(MODE_KEYS.map(mode => [mode, emptyModeProfile(mode)])),
     note: '',
     narrationSource: 'manual', // manual | ai-brief
     story: '',
@@ -80,6 +98,9 @@ try {
   savedJob = JSON.parse(fs.readFileSync(F('job.json'), 'utf8'));
   job = { ...freshJob(), ...savedJob };
 } catch { /* ໃໝ່ */ }
+job.modeProfiles = normalizedModeProfiles(job.modeProfiles, job.product, job.note, job.story, job.brief);
+if (!MODE_KEYS.includes(job.product?.mode)) job.product.mode = 'product';
+job.modeProfiles[job.product.mode] = { ...job.modeProfiles[job.product.mode], ...job.product, mode: job.product.mode, note: job.note || '', story: job.story || '', brief: job.brief || '' };
 if (!job.policyWaitClip && job.phase === 'error' && job.projectUrl) {
   const oldPolicy = String(job.error || '').match(/^Flow ແຈ້ງບັນຫາຄລິບ ([1-3]):/);
   if (oldPolicy) { job.policyWaitClip = Number(oldPolicy[1]); job.policyWaitProject = job.projectUrl; }
@@ -130,6 +151,9 @@ if (!Object.prototype.hasOwnProperty.call(savedJob || {}, 'briefRevision')
 let saveTimer = null;
 function saveJob() {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  const activeMode = MODE_KEYS.includes(job.product?.mode) ? job.product.mode : 'product';
+  job.modeProfiles = job.modeProfiles || Object.fromEntries(MODE_KEYS.map(mode => [mode, emptyModeProfile(mode)]));
+  job.modeProfiles[activeMode] = { ...job.modeProfiles[activeMode], ...job.product, mode: activeMode, note: job.note || '', story: job.story || '', brief: job.brief || '' };
   atomicWriteJson(F('job.json'), job);
 }
 if (removedLegacyCitations || normalizedLegacyScript) saveJob();
@@ -439,6 +463,7 @@ async function stepScript(retry = 0, lockUrl = '') {
     const m = line.match(/@@AI_CHAT_URL (.+)$/);
     if (m) { try { job.autoScriptChatUrl = JSON.parse(m[1]).url || lockUrl; saveJob(); } catch { /* ignore */ } }
   }, code => {
+    if (code === 11) { job.error = 'Gemini API ບໍ່ພ້ອມ; bot ບໍ່ໄດ້ເປີດ Gemini Web. ກະລຸນາລອງໃໝ່ພາຍຫຼັງ.'; setPhase('error'); return; }
     if ((code === 5 || code === 6 || code === 124) && retry < 1) {
       logLn(`AI ຕອບບໍ່ສຳເລັດ (code ${code}) — ລອງຖາມໃໝ່ອັດຕະໂນມັດ 1 ຄັ້ງ`);
       setTimeout(() => stepScript(retry + 1, lockUrl), 4000);
@@ -534,7 +559,7 @@ async function stepStoryboard(resumeFrom = 1) {
   }
   setPhase('storyboard', 'ສ້າງ Storyboard 3 ແຜ່ນ (ເທື່ອລະແຜ່ນ) ໃນ Flow...');
   if (resumeFrom === 1) {
-    job.sheetsDone = 0; job.sheetFiles = []; job.heroPath = ''; job.videoSubmitted = {};
+    job.sheetsDone = 0; job.sheetFiles = []; job.heroPath = ''; job.videoSubmitted = {}; job.videoSubmittedAt = {};
   }
   job.error = ''; saveJob();
   // A new storyboard run must never inherit URL-to-sheet mappings from an
@@ -730,7 +755,15 @@ async function stepVideos(startNo = 1, policyStage = 0) {
   runWorker(['flow-batch', 'video', files.join(','), orderedRefPaths(job.product).join(','), job.projectUrl || '', String(startNo), sheets.join(',')], line => {
     let submitted = line.match(/@@JOB_SUBMITTED (.+)$/);
     if (submitted) {
-      try { const o = JSON.parse(submitted[1]); if (o.kind === 'video' && o.n >= 1 && o.n <= 3) { job.videoSubmitted ||= {}; job.videoSubmitted[o.n] = job.projectUrl; saveJob(); } } catch {}
+      try {
+        const o = JSON.parse(submitted[1]);
+        if (o.kind === 'video' && o.n >= 1 && o.n <= 3) {
+          job.videoSubmitted ||= {}; job.videoSubmittedAt ||= {};
+          job.videoSubmitted[o.n] = job.projectUrl;
+          job.videoSubmittedAt[o.n] = Date.now();
+          saveJob();
+        }
+      } catch {}
     }
     let m = line.match(/@@CLIP_TITLE (.+)$/);
     if (m) {
@@ -844,6 +877,7 @@ function resetFlowProjectOutputs(nextUrl) {
   job.clipTitles = [];
   job.clipFps = [];
   job.videoSubmitted = {};
+  job.videoSubmittedAt = {};
   job.policyWaitClip = 0;
   job.policyWaitProject = '';
   job.project = { name: '', clips: [], status: 'not-started' };
@@ -851,6 +885,7 @@ function resetFlowProjectOutputs(nextUrl) {
     try { fs.unlinkSync(F(f)); } catch { /* ບໍ່ມີກໍບໍ່ເປັນຫຍັງ */ }
   }
   job.sceneUrl = '';
+  job.finalFile = '';
   job.combineManifest = '';
   job.error = '';
   job.phase = 'home';
@@ -929,7 +964,7 @@ function publicState() {
   const refStat = ref ? (() => { try { return fs.statSync(ref); } catch { return null; } })() : null;
   return {
     version: VERSION, phase: job.phase, msg: job.msg, error: job.error,
-    product: job.product, hasRef: !!refStat, refVersion: refStat ? `${refStat.size}-${refStat.mtimeMs}` : '', note: job.note, story: job.story, brief: job.brief || '',
+    product: job.product, modeProfiles: job.modeProfiles, hasRef: !!refStat, refVersion: refStat ? `${refStat.size}-${refStat.mtimeMs}` : '', note: job.note, story: job.story, brief: job.brief || '',
     briefRevision: job.briefRevision || 0, briefStatus: job.briefStatus || 'idle', briefError: job.briefError || '',
     briefWarnings: Array.isArray(job.briefWarnings) ? job.briefWarnings : [],
     script: job.script, scriptErrs: job.scriptErrs,
@@ -1110,21 +1145,34 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true, started: true });
       }
       if (p === '/api/product') {
-        job.product = { ...job.product, ...b };
-        // ກວດ mode ແລະ ລ້າງຮູບທີ່ບໍ່ກ່ຽວຂ້ອງຕາມໂໝດ (ກັນ buildHero ຍິງຜິດ/ຮູບຕົກຄ້າງ)
-        if (b.mode !== undefined) {
-          const mode = ['product', 'review', 'course'].includes(b.mode) ? b.mode : 'product';
-          job.product.mode = mode;
-          if (mode === 'course') { job.product.refPath = ''; job.product.refName = ''; job.product.packLook = ''; }
-          if (mode === 'product') { job.product.personRefs = []; }
-          // ຮູບສິນຄ້າເພີ່ມ (extraRefs) ມີແຕ່ໂໝດສິນຄ້າ — ໂໝດອື່ນລ້າງ
-          if (mode !== 'product') { job.product.extraRefs = []; }
+        const allowed = MODE_KEYS;
+        const currentMode = allowed.includes(job.product.mode) ? job.product.mode : 'product';
+        const targetMode = b.mode !== undefined && allowed.includes(b.mode) ? b.mode : currentMode;
+        // Capture the outgoing form before loading the selected mode profile.
+        if (b.fromMode === currentMode && b.profile && typeof b.profile === 'object') {
+          const snap = b.profile;
+          job.modeProfiles[currentMode] = { ...job.modeProfiles[currentMode], name: String(snap.name ?? ''), desc: String(snap.desc ?? ''), audience: String(snap.audience ?? ''), packLook: String(snap.packLook ?? ''), personLook: String(snap.personLook ?? ''), note: skill.thaiToLao(skill.stripAICitations(snap.note ?? '')), story: skill.thaiToLao(skill.stripAICitations(snap.story ?? '')), brief: String(snap.brief ?? '') };
+        } else {
+          job.modeProfiles[currentMode] = { ...job.modeProfiles[currentMode], ...job.product, mode: currentMode, note: job.note || '', story: job.story || '', brief: job.brief || '' };
         }
+        if (targetMode !== currentMode) {
+          if (isBusy()) return send(res, 409, { ok: false, error: 'ລໍໃຫ້ວຽກປັດຈຸບັນຈົບກ່ອນຈຶ່ງປ່ຽນໂໝດ' });
+          job.product = { ...emptyModeProfile(targetMode), ...job.modeProfiles[targetMode], mode: targetMode };
+          job.note = job.product.note || '';
+          job.story = job.product.story || '';
+          job.brief = job.product.brief || '';
+          job.narrationSource = 'manual';
+        }
+        const { mode: _mode, fromMode: _fromMode, profile: _profile, ...fields } = b;
+        if (fields.note !== undefined) { fields.note = skill.thaiToLao(skill.stripAICitations(fields.note)); job.note = fields.note; job.narrationSource = 'manual'; }
+        if (fields.story !== undefined) fields.story = skill.thaiToLao(skill.stripAICitations(fields.story));
+        job.product = { ...job.product, ...fields, mode: targetMode };
+        if (fields.story !== undefined) job.story = fields.story;
+        if (fields.brief !== undefined) job.brief = fields.brief;
         if (!Array.isArray(job.product.personRefs)) job.product.personRefs = [];
         if (!Array.isArray(job.product.extraRefs)) job.product.extraRefs = [];
-        if (b.note !== undefined && b.note !== job.note) { job.note = skill.thaiToLao(skill.stripAICitations(b.note)); job.narrationSource = 'manual'; }
-        job.story = b.story !== undefined ? skill.thaiToLao(skill.stripAICitations(b.story)) : job.story;
-        job.brief = b.brief ?? job.brief; saveJob(); return send(res, 200, { ok: true });
+        job.modeProfiles[targetMode] = { ...job.product, note: job.note || '', story: job.story || '', brief: job.brief || '' };
+        saveJob(); return send(res, 200, { ok: true, mode: targetMode });
       }
       if (p === '/api/expand-brief' || p === '/api/auto-script') {
         const autoScript = p === '/api/auto-script';
@@ -1194,7 +1242,8 @@ const server = http.createServer(async (req, res) => {
         if (!m) return send(res, 200, { ok: false, error: 'ຮູບບໍ່ຖືກຕ້ອງ (ຮອງຮັບ PNG/JPG/WEBP)' });
         const ext = m[1].toLowerCase().replace('jpeg', 'jpg');
         const safeBase = (b.filename || 'product').replace(/[^a-z0-9_.-]/gi, '_').replace(/\.[^.]+$/, '').slice(0, 40) || 'product';
-        const outPath = F(`product-ref.${ext}`);
+        const mode = MODE_KEYS.includes(job.product.mode) ? job.product.mode : 'product';
+        const outPath = F(`${mode}-product-ref.${ext}`);
         fs.writeFileSync(outPath, Buffer.from(m[2], 'base64'));
         job.product.refPath = outPath;
         job.product.refName = safeBase;
@@ -1211,7 +1260,8 @@ const server = http.createServer(async (req, res) => {
           const m = /^data:image\/(png|jpe?g|webp);base64,(.+)$/i.exec((imgs[i] && imgs[i].dataUrl) || '');
           if (!m) return send(res, 200, { ok: false, error: `ຮູບຄົນລຳດັບ ${i + 1} ບໍ່ຖືກຕ້ອງ (PNG/JPG/WEBP)` });
           const ext = m[1].toLowerCase().replace('jpeg', 'jpg');
-          const outPath = F(`person-ref-${i + 1}.${ext}`);
+          const mode = MODE_KEYS.includes(job.product.mode) ? job.product.mode : 'product';
+          const outPath = F(`${mode}-person-ref-${i + 1}.${ext}`);
           fs.writeFileSync(outPath, Buffer.from(m[2], 'base64'));
           paths.push(outPath);
         }
@@ -1508,6 +1558,28 @@ const server = http.createServer(async (req, res) => {
       }
       if (p === '/api/check-video-clips') {
         if (isBusy()) return send(res, 200, { ok: false, error: 'ມີວຽກກຳລັງແລ່ນຢູ່' });
+        // One recovery entry point for the complete workflow.  It resumes from
+        // the first incomplete checkpoint and deliberately reuses the existing
+        // video reconciliation below, so it never submits a duplicate clip.
+        if ((job.phase === 'done' || job.project?.status === 'combined')
+            && job.finalFile && fs.existsSync(job.finalFile)) {
+          logLn('ພົບ MP4 ດາວໂຫຼດແລ້ວ — ສືບຕໍ່ປິດ project ເກົ່າ ແລະ ສ້າງ project ໃໝ່');
+          rotateProjectAfterDownload();
+          return send(res, 200, { ok: true, stage: 'new-project' });
+        }
+        if ((job.sheetsDone || 0) < 3) {
+          const requiredDialogueErrors = skill.requiredDialogueErrors(job.script || []);
+          if (requiredDialogueErrors.length) {
+            return send(res, 200, { ok: false, error: `ບົດພາກຕ້ອງຄົບ 12/12 — ${requiredDialogueErrors.join('; ')}` });
+          }
+          const resumeFrom = Math.max(1, Math.min(3, Number(job.sheetsDone || 0) + 1));
+          job.auto = true;
+          job.error = '';
+          saveJob();
+          logLn(`ກວດ checkpoint ແລ້ວ — ສືບຕໍ່ Storyboard ແຜ່ນ ${resumeFrom} ແລະແລ່ນຕໍ່ອັດຕະໂນມັດ`);
+          stepStoryboard(resumeFrom);
+          return send(res, 200, { ok: true, stage: 'storyboard', resumeFrom });
+        }
         if (job.sheetsDone !== 3 || !/^https:\/\/flow\.google\.com\/project\//.test(job.projectUrl || ''))
           return send(res, 200, { ok: false, error: 'ບໍ່ມີ 3 ແຜ່ນ ຫຼື URL project ທີ່ຖືກຕ້ອງ' });
         let found = null;
@@ -1562,9 +1634,16 @@ const server = http.createServer(async (req, res) => {
           const fpDistance = (a, b) => a && b && a.length === 64 && b.length === 64
             ? [...a].reduce((n, bit, i) => n + (bit !== b[i]), 0) : Infinity;
           const known = (job.clipFps || [])[0];
-          const scene1Matches = clips.filter(c => fpDistance(known, c.fp) <= 11
-            || (!c.fp && c.label && c.label === (job.clipTitles || [])[0]
-              && clips.filter(other => other.label === c.label).length === 1));
+          const knownTitle = String((job.clipTitles || [])[0] || '').trim();
+          const exactTitleMatches = knownTitle
+            ? clips.filter(c => String(c.label || '').trim() === knownTitle) : [];
+          // Prefer the exact Flow title already recorded for scene 1. Nearby
+          // perceptual hashes can collide for visually similar consecutive
+          // shots and otherwise make a valid two-clip sequence ambiguous.
+          const scene1Matches = exactTitleMatches.length === 1 ? exactTitleMatches
+            : clips.filter(c => fpDistance(known, c.fp) <= 11
+              || (!c.fp && c.label && c.label === knownTitle
+                && clips.filter(other => other.label === c.label).length === 1));
           if (clips.length === 2 && job.videoSubmitted?.[1] === job.projectUrl
               && job.videoSubmitted?.[2] === job.projectUrl && scene1Matches.length === 1) {
             const first = scene1Matches[0];
@@ -1572,7 +1651,7 @@ const server = http.createServer(async (req, res) => {
             // Flow sometimes returns an empty thumbnail while its video tile
             // and distinct title remain visible. The submission journal plus
             // exact scene-1 fingerprint still identify the sole remaining tile.
-            if ((!second.fp || !first.fp || fpDistance(first.fp, second.fp) > 11)
+            if ((exactTitleMatches.length === 1 || !second.fp || !first.fp || fpDistance(first.fp, second.fp) > 11)
                 && second.label && second.label !== first.label) {
               if (waiting && job.policyWaitClip === 2) repairFound();
               job.clipTitles = [first.label, second.label];
@@ -1588,6 +1667,7 @@ const server = http.createServer(async (req, res) => {
               // ລຶບບັນທຶກນັ້ນອອກແລ້ວສ້າງຄລິບ 3 ຄືນ — ບໍ່ແມ່ນການສົ່ງຊ້ຳ ເພາະໃນ Flow
               // ບໍ່ມີຄລິບ 3 ຢູ່ ຈຶ່ງເປັນໄປບໍ່ໄດ້ທີ່ຈະໄດ້ຄລິບຊ້ຳ.
               if (job.videoSubmitted) delete job.videoSubmitted[3];
+              if (job.videoSubmittedAt) delete job.videoSubmittedAt[3];
               saveJob();
               logLn('ຕໍ່ສ້າງຄລິບ 3 (ລຶບບັນທຶກສົ່ງຄ້າງ ເພາະ Flow ບໍ່ມີຄລິບ 3 ຈິງ)');
               stepVideos(3); return;
@@ -1596,10 +1676,65 @@ const server = http.createServer(async (req, res) => {
           if (clips.length === 1) {
             if (waiting && job.policyWaitClip !== 1) { keepWaiting(); return; }
             const clip = clips[0];
+            const knownTitle = (job.clipTitles || [])[0] || '';
+            const titleMatches = (a, b) => {
+              const rawA = String(a || '').trim(), rawB = String(b || '').trim();
+              const x = rawA.replace(/[.…]+\s*$/, '').trim(), y = rawB.replace(/[.…]+\s*$/, '').trim();
+              if (!x || !y) return false;
+              if (x === y) return true;
+              const truncated = /[.…]\s*$/.test(rawA) || /[.…]\s*$/.test(rawB);
+              const short = x.length < y.length ? x : y, long = x.length < y.length ? y : x;
+              return truncated && short.length >= 24 && long.startsWith(short);
+            };
+            const isKnownFirst = fpDistance((job.clipFps || [])[0], clip.fp) <= 11
+              || titleMatches(knownTitle, clip.label);
+            if (!isKnownFirst) {
+              job.error = 'ພົບຄລິບ 1 ອັນ ແຕ່ຢືນຢັນບໍ່ໄດ້ວ່າແມ່ນຄລິບ 1 — ບໍ່ສົ່ງຄລິບຊ້ຳ';
+              setPhase('error'); return;
+            }
             if (waiting) repairFound();
             job.clipTitles = [clip.label || found.titles[0]];
-            job.clipFps = [clip.fp || ''];
+            job.clipFps = [clip.fp || (job.clipFps || [])[0] || historicalFp(clip.label)];
             job.videoSubmitted ||= {}; job.videoSubmitted[1] = job.projectUrl;
+            job.clipsDone = 1;
+
+            // A submit event only proves the Generate button was pressed. If
+            // Flow still lists just clip 1, do not let that stale journal entry
+            // block recovery forever; wait for the same 10-minute generation
+            // window used by the worker before considering clip 2 absent.
+            if (job.videoSubmitted[2] === job.projectUrl) {
+              // Older jobs predate videoSubmittedAt. Recover the original
+              // Generate-click time from the event log so each manual check
+              // does not restart the ten-minute wait window.
+              let legacySubmittedAt = 0;
+              for (const entry of (job.log || []).slice().reverse()) {
+                const match = String(entry).match(/(?:^|\s)(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)\s+@@JOB_SUBMITTED\s+(.+)$/i);
+                if (!match) continue;
+                try {
+                  const event = JSON.parse(match[5]);
+                  if (event.kind !== 'video' || Number(event.n) !== 2) continue;
+                  const hour = (Number(match[1]) % 12) + (match[4].toUpperCase() === 'PM' ? 12 : 0);
+                  const when = new Date();
+                  when.setHours(hour, Number(match[2]), Number(match[3]), 0);
+                  if (when.getTime() > Date.now() + 5 * 60 * 1000) when.setDate(when.getDate() - 1);
+                  legacySubmittedAt = when.getTime();
+                  break;
+                } catch { /* skip malformed legacy log records */ }
+              }
+              const submittedAt = Number(job.videoSubmittedAt?.[2] || 0) || legacySubmittedAt;
+              const failedBatch = (job.timings?.workers || []).slice().reverse()
+                .find(w => w.task === 'flow-batch' && Number(w.code) === 4);
+              const ageMs = submittedAt ? Date.now() - submittedAt
+                : failedBatch && Number(failedBatch.ms) >= 600000 ? 600000 : 0;
+              if (ageMs < 600000) {
+                const remaining = Math.max(1, Math.ceil((600000 - ageMs) / 60000));
+                job.error = `Flow ໄດ້ຮັບຄລິບ 2 ແລ້ວ ແຕ່ຍັງບໍ່ສະແດງຜົນ — ລໍອີກປະມານ ${remaining} ນາທີ ແລ້ວກົດກວດອີກຄັ້ງ`;
+                saveJob(); setPhase('error'); return;
+              }
+              delete job.videoSubmitted[2];
+              if (job.videoSubmittedAt) delete job.videoSubmittedAt[2];
+              logLn('Flow ມີພຽງຄລິບ 1 ຫຼັງຄົບເວລາລໍ 10 ນາທີ — ຖືວ່າຄລິບ 2 ບໍ່ສຳເລັດ ແລະກູ້ສ້າງໃໝ່');
+            }
             saveJob(); stepVideos(2); return;
           }
           if (waiting) { keepWaiting(); return; }
@@ -1645,16 +1780,22 @@ const server = http.createServer(async (req, res) => {
         killWorker();
         if (b.full) {
           // ລຶບໄຟລ໌ຮູບອ້າງອີງທັງໝົດຖິ້ມ ເພື່ອໃຫ້ "ຮູບ" ຣີເຊັດແທ້
-          for (const f of [...(job.product.personRefs || []), ...(job.product.extraRefs || []), job.product.refPath]) {
-            try { if (f) fs.rmSync(f); } catch { /* ບໍ່ມີກໍຂ້າມ */ }
-          }
-          job = freshJob();   // freshJob ຕັ້ງ product ເປົ່າໝົດ
+          const allRefs = Object.values(job.modeProfiles || {}).flatMap(profile => [
+            ...(profile.personRefs || []), ...(profile.extraRefs || []), profile.refPath,
+          ]);
+          for (const f of allRefs) { try { if (f) fs.rmSync(f); } catch { /* ບໍ່ມີກໍຂ້າມ */ } }
+          job = freshJob();   // freshJob ຕັ້ງທຸກ mode profile ໃຫ້ວ່າງ
           saveJob();
           return send(res, 200, { ok: true, full: true });
         }
-        const keepProduct = job.product;
+        const keepModeProfiles = job.modeProfiles;
+        const activeMode = MODE_KEYS.includes(job.product?.mode) ? job.product.mode : 'product';
         job = freshJob();
-        job.product = { ...job.product, ...keepProduct };
+        job.modeProfiles = keepModeProfiles;
+        job.product = { ...job.product, ...keepModeProfiles[activeMode], mode: activeMode };
+        job.note = job.product.note || '';
+        job.story = job.product.story || '';
+        job.brief = job.product.brief || '';
         saveJob();
         return send(res, 200, { ok: true, keptProduct: true });
       }

@@ -138,6 +138,9 @@ button.is-busy::after{content:"";position:absolute;inset:0;margin:auto;width:17p
 .api-mode-switch{display:flex;gap:0;padding:5px;background:var(--panel2);border:1px solid var(--line);border-radius:14px}
 .api-mode-switch button{flex:1;border:0;background:transparent;color:var(--muted);font-weight:700;font-size:11px;cursor:pointer;border-radius:10px;padding:10px 8px;transition:all .22s var(--ease)}
 .api-mode-switch button.on{background:linear-gradient(135deg,var(--purple),var(--purple2));color:#fff;box-shadow:0 6px 18px rgba(114,58,222,.33)}
+.api-auto-model{display:inline-flex;align-items:center;gap:7px;min-height:40px;max-width:100%;padding:0 12px;border:1px solid rgba(66,214,164,.28);border-radius:13px;background:rgba(66,214,164,.07);color:#9be8ce;font-size:10px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.api-auto-model i{display:inline-grid;place-items:center;width:18px;height:18px;flex:0 0 auto;border-radius:7px;background:rgba(66,214,164,.16);font-style:normal;color:var(--green)}
+@media(max-width:650px){#apiKeyRow{align-items:stretch!important}#apiKeyRow input{flex-basis:100%!important}.api-auto-model{width:100%;white-space:normal;line-height:1.35;padding:9px 12px}}
 .mode-pill:hover:not(.on){color:var(--text)}
 .mode-hint{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:13px;margin-bottom:8px;
   border:1px solid var(--line2);background:linear-gradient(135deg,rgba(157,92,255,.1),rgba(110,60,255,.03));
@@ -215,8 +218,7 @@ button.is-busy::after{content:"";position:absolute;inset:0;margin:auto;width:17p
             <button onclick="runAction(this,'/api/open-ai')">ເປີດແທັບ AI</button>
             <div class="sep"></div>
             <small>ກູ້ວຽກ</small>
-            <button id="checkClipsBtn" onclick="checkVideoClips()">ກວດ/ຕໍ່ຄລິບ 3 ແລ້ວດາວໂຫຼດ</button>
-            <button id="resumeBtn" onclick="resumeCombine()">ສືບຕໍ່ຕໍ່ຄລິບ</button>
+            <button id="resumeWorkflowBtn" onclick="resumeWorkflow(this)">ກວດ ແລະ ສືບຕໍ່ວຽກ</button>
             <div class="sep"></div>
             <small>ລະບົບ</small>
             <button id="checkUpdateBtn" onclick="checkUpdate()">ກວດອັບເດດ</button>
@@ -250,12 +252,7 @@ button.is-busy::after{content:"";position:absolute;inset:0;margin:auto;width:17p
         </div>
         <div class="row" id="apiKeyRow" style="gap:8px;margin-top:11px;flex-wrap:wrap;align-items:center">
           <input id="apiKeyInput" type="password" placeholder="ວາງ API key ທີ່ນີ້ (AIza…)" autocomplete="off" onfocus="beginApiKeyEdit()" onblur="restoreApiKeyMask()" style="flex:2;min-width:200px"/>
-          <select id="apiModelSelect" style="width:auto">
-            <option value="gemini-3.1-flash-lite">3.1 Flash-Lite — ໄວ (ແນະນຳ)</option>
-            <option value="gemini-3-flash-preview">3 Flash — ແຮງກວ່າ</option>
-            <option value="gemini-3.1-pro-preview">3.1 Pro — ແຮງສຸດ</option>
-            <option value="gemini-flash-latest">Flash (latest)</option>
-          </select>
+          <span class="api-auto-model" title="ບອດຈະເລືອກ Flash model ທີ່ API key ໃຊ້ໄດ້ ແລະສະຫຼັບເອງເມື່ອ 429/503"><i>✓</i>Auto model · 429/503 fallback</span>
           <button class="soft-button" onclick="testApiKey(this)">ທົດສອບ</button>
           <button class="primary-button" onclick="saveApiKey(this)">ບັນທຶກ</button>
         </div>
@@ -469,7 +466,7 @@ button.is-busy::after{content:"";position:absolute;inset:0;margin:auto;width:17p
           <div id="sbStat"></div>
           <small>ແຕ່ລະແຜ່ນເປັນຮູບ 9:16 ສ້າງແຍກ 1 ຮູບຕໍ່ 1 ແຜ່ນ; ບັອດຈະແນບຮູບສິນຄ້າ reference ໃຫ້ Flow.</small>
           <div class="row action-row">
-            <button class="soft-button" id="checkVideosBtn" onclick="checkVideoClips()">ກວດຄລິບແລ້ວສືບຕໍ່</button>
+            <button class="soft-button" id="checkVideosBtn" onclick="resumeWorkflow(this)">ກວດ ແລະ ສືບຕໍ່ວຽກ</button>
             <span style="flex:1"></span>
             <button id="createVideosBtn" class="primary-button" onclick="approveStoryboardAndOpenFlow()">Storyboard ຕົກລົງ → ສ້າງ 3 ວິດີໂອ</button>
           </div>
@@ -545,10 +542,9 @@ async function saveApiKey(btn) {
   const input = el('apiKeyInput');
   const rawKey = input.value.trim();
   const key = isMaskedApiKey(input) ? '' : rawKey;
-  const model = el('apiModelSelect').value;
   await withBusy(btn, async () => {
     try {
-      const body = { geminiApiModel: model };
+      const body = {};
       if (key) { body.geminiApiKey = key; body.ai = 'gemini'; }  // ໃສ່ key = ໃຊ້ Gemini API
       await api('/api/settings', body);
       el('apiKeyInput').value = '';
@@ -620,8 +616,6 @@ function syncApiKey(s) {
     inp.type = mask ? 'text' : 'password';
     inp.placeholder = mask ? 'API key ຖືກປິດບັງໄວ້' : 'ວາງ API key ທີ່ນີ້ (AIza…)';
   }
-  const sel = el('apiModelSelect');
-  if (sel && document.activeElement !== sel && st.geminiApiModel) sel.value = st.geminiApiModel;
 }
 // ── ແຖບວິເຄາະ (ໜ້າ create) — ນັບສະເພາະ ບັນຈຸພັນ → ບົດເລື່ອງ → ຄຳເວົ້າ ──
 function syncJobProgress(s) {
@@ -717,10 +711,12 @@ function applyBriefResult(s) {
 
   // ນີ້ແມ່ນຜົນຈາກການກົດ “ໃຫ້ AI ແຕກ brief ໃສ່ຟອມ” ໂດຍກົງ:
   // ຕ້ອງຂຽນທັບ 4 ຊ່ອງເປົ້າໝາຍ ແມ່ນແຕ່ຊ່ອງນັ້ນມີຄ່າເກົ່າຢູ່.
-  el('pname').value = s.product?.name || '';
-  el('pdesc').value = s.product?.desc || '';
-  el('pstory').value = s.story || '';
-  el('pnote').value = s.note || '';
+  const profile = s.modeProfiles?.[CURRENT_MODE];
+  if (!profile || s.product?.mode !== CURRENT_MODE) return;
+  el('pname').value = profile.name || '';
+  el('pdesc').value = profile.desc || '';
+  el('pstory').value = profile.story || '';
+  el('pnote').value = profile.note || '';
   appliedBriefRevision = revision;
 }
 let PRODUCT_PRESETS = [];
@@ -740,6 +736,7 @@ let AUD_PRESETS = [];
 })();
 // ===== ຕົວສະຫຼັບ 3 ໂໝດ + dropzone ຫຼາຍຮູບ =====
 let CURRENT_MODE = 'product';
+let modeUserSelected = false;
 const MODE_HINTS = {
   product: ['📦', 'ໂໝດສິນຄ້າ: ອັບຮູບສິນຄ້າ 1 ຮູບ — Flow ສ້າງໂຄສະນາລີວິວສິນຄ້າ', ''],
   review:  ['👤', 'ໂໝດຄົນລິວິວສິນຄ້າ: ອັບຮູບສິນຄ້າ 1 + ຮູບຄົນ ≤4 — Flow ສ້າງຄົນໜ້າຄືຮູບ ຖື/ລິວິວສິນຄ້າ', ''],
@@ -747,8 +744,22 @@ const MODE_HINTS = {
 };
 // ຮູບທີ່ເລືອກຕໍ່ zone (File objects)
 const ZONE_FILES = { product: [], personR: [], personC: [], productM: [] };
-function setMode(m) {
+let modeSwitchPending = false;
+function readModeForm() {
+  return { name: el('pname').value, desc: el('pdesc').value, audience: el('paud').value,
+    packLook: el('plook').value, personLook: el('plookPerson').value,
+    note: el('pnote').value, story: el('pstory').value, brief: el('pbrief').value };
+}
+function writeModeForm(profile = {}) {
+  for (const [id, key] of [['pname','name'],['pdesc','desc'],['paud','audience'],['plook','packLook'],['plookPerson','personLook'],['pnote','note'],['pstory','story'],['pbrief','brief']]) el(id).value = profile[key] || '';
+}
+async function setMode(m, persist = true) {
+  if (!['product','review','course'].includes(m) || (persist && modeSwitchPending)) return;
+  const previous = CURRENT_MODE;
+  if (persist && m !== previous && STATE.busy) { toast('ລໍໃຫ້ວຽກປັດຈຸບັນຈົບກ່ອນຈຶ່ງປ່ຽນໂໝດ', 'err'); return; }
+  const outgoing = persist && m !== previous ? readModeForm() : null;
   CURRENT_MODE = m;
+  if (persist) modeUserSelected = true;
   document.querySelectorAll('#modeSwitch .mode-pill').forEach(p => p.classList.toggle('on', p.dataset.mode === m));
   const idx = { product: 0, review: 1, course: 2 }[m] || 0;
   const g = el('modeGlider'); if (g) g.style.transform = 'translateX(' + (idx * 100) + '%)';
@@ -772,7 +783,18 @@ function setMode(m) {
   const _lblPd = el('lblPdesc'); if (_lblPd) _lblPd.textContent = L.pd;
   const _pd = el('pdesc'); if (_pd) _pd.placeholder = L.pdp;
   const _lblAud = document.querySelector('label[for="audPreset"]'); if (_lblAud) _lblAud.textContent = L.ap;
-  try { api('/api/product', { mode: m }); } catch (e) {}
+  if (persist && m !== previous) {
+    modeSwitchPending = true;
+    writeModeForm(STATE.modeProfiles?.[m] || {});
+    try {
+      await api('/api/product', { mode: m, fromMode: previous, profile: outgoing });
+      await pull();
+    } catch (e) { await setMode(previous, false); toast('ປ່ຽນໂໝດບໍ່ສຳເລັດ: ' + (e?.message || e), 'err'); }
+    finally { modeSwitchPending = false; }
+  } else if (!persist) {
+    const profile = STATE.modeProfiles?.[m];
+    if (profile) writeModeForm(profile);
+  }
 }
 // ຕິດຕັ້ງ dropzone 1 ອັນ (drag-drop + click + ຈຳກັດ max)
 function initDropzone(dzId, inputId, gridId, countId, zoneKey, max) {
@@ -815,7 +837,9 @@ function renderZone(gridId, countId, zoneKey, max, inputId) {
   initDropzone('dzProduct', 'fProduct', 'tgProduct', 'zcProduct', 'product', 1);
   initDropzone('dzPersonR', 'fPersonR', 'tgPersonR', 'zcPersonR', 'personR', 4);
   initDropzone('dzPersonC', 'fPersonC', 'tgPersonC', 'zcPersonC', 'personC', 5);
-  setMode('product');
+  // Do not overwrite the saved mode while the page is initializing. render()
+  // restores the persisted mode after the first /api/state response arrives.
+  setMode('product', false);
 })();
 
 function applyProductPreset(){
@@ -834,6 +858,10 @@ function saveAutoNewProject() {
 }
 function render() {
   const s = STATE;
+  if (!modeUserSelected && ['product', 'review', 'course'].includes(s.product?.mode)
+      && CURRENT_MODE !== s.product.mode) {
+    setMode(s.product.mode, false);
+  }
   try { syncPage(s); syncSidebar(s); syncApiKey(s); syncJobProgress(s); } catch (e) { /* UI ໃໝ່ຍັງບໍ່ພ້ອມ */ }
   // sync ຄ່າ checkbox ຈາກ server (ຢ່າຂຽນທັບຕອນຜູ້ໃຊ້ກຳລັງກົດ)
   const anp = el('autoNewProject');
@@ -900,24 +928,26 @@ function render() {
     if (activeStep) el('steps').scrollLeft = Math.max(0, activeStep.offsetLeft - 18);
     lastStepPhase = s.phase || '';
   }
-  // product — ເກັບຂໍ້ມູນທີ່ຜູ້ໃຊ້ໃສ່ ບໍ່ຫາຍເມື່ອອັບໂຫຼດ
-  if (!document.activeElement || document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
-    if (!el('pname').value && s.product?.name) el('pname').value = s.product.name;
-    if (!el('pdesc').value && s.product?.desc) el('pdesc').value = s.product.desc;
-    if (!el('paud').value && s.product?.audience) el('paud').value = s.product.audience;
-    if (!el('pbrief').value && s.brief) el('pbrief').value = s.brief;
+  // ສະແດງຟອມຈາກ profile ຂອງໂໝດປັດຈຸບັນເທົ່ານັ້ນ.
+  const activeProfile = s.modeProfiles?.[CURRENT_MODE];
+  if (activeProfile && s.product?.mode === CURRENT_MODE
+      && (!document.activeElement || document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA')) {
+    if (!el('pname').value && activeProfile.name) el('pname').value = activeProfile.name;
+    if (!el('pdesc').value && activeProfile.desc) el('pdesc').value = activeProfile.desc;
+    if (!el('paud').value && activeProfile.audience) el('paud').value = activeProfile.audience;
+    if (!el('pbrief').value && activeProfile.brief) el('pbrief').value = activeProfile.brief;
     // ອັບເດດຊ່ອງລັກສະນະກ່ອງເມື່ອ AI ຂຽນມາໃໝ່ (ເວັ້ນຕອນຜູ້ໃຊ້ກຳລັງພິມຢູ່)
-    if (s.product?.packLook && document.activeElement !== el('plook')
-        && el('plook').value !== s.product.packLook) {
-      el('plook').value = s.product.packLook;
+    if (activeProfile.packLook && document.activeElement !== el('plook')
+        && el('plook').value !== activeProfile.packLook) {
+      el('plook').value = activeProfile.packLook;
     }
     // ອັບເດດຊ່ອງລັກສະນະຄົນເມື່ອ AI ຂຽນມາໃໝ່ (ເວັ້ນຕອນຜູ້ໃຊ້ກຳລັງພິມຢູ່)
-    if (s.product?.personLook && document.activeElement !== el('plookPerson')
-        && el('plookPerson').value !== s.product.personLook) {
-      el('plookPerson').value = s.product.personLook;
+    if (activeProfile.personLook && document.activeElement !== el('plookPerson')
+        && el('plookPerson').value !== activeProfile.personLook) {
+      el('plookPerson').value = activeProfile.personLook;
     }
-    if (!el('pnote').value && s.note) el('pnote').value = s.note;
-    if (!el('pstory').value && s.story) el('pstory').value = s.story;
+    if (!el('pnote').value && activeProfile.note) el('pnote').value = activeProfile.note;
+    if (!el('pstory').value && activeProfile.story) el('pstory').value = activeProfile.story;
     if (!el('ai').value) el('ai').value = s.settings?.ai || 'claude';
   }
   // ສະແດງຮູບທີ່ບັນທຶກໄວ້ແລ້ວ (ຖ້າຍັງບໍ່ມີຮູບທີ່ຫາກໍເລືອກ)
@@ -1018,7 +1048,7 @@ async function expandBrief() {
   btn.disabled = true; btn.textContent = 'ກຳລັງໃຫ້ AI ແຍກ brief...';
   try {
     // ບັນທຶກ brief ກ່ອນ, ແລ້ວ server ຈະສົ່ງໄປ AI ແລະຂຽນກັບມາໃສ່ 4 ຊ່ອງ.
-    await api('/api/product', { brief });
+    await api('/api/product', { mode: CURRENT_MODE, ...readModeForm() });
     const r = await api('/api/expand-brief', { brief });
     if (!r.ok) { toast(r.error || 'ເລີ່ມແຍກ brief ບໍ່ໄດ້','err'); return; }
     const until = Date.now() + 250000;
@@ -1045,7 +1075,7 @@ async function autoScript() {
   btn.textContent = 'ກຳລັງສ້າງສະຄຣິບ...';
   try {
     await api('/api/settings', { ai: el('ai').value });
-    await api('/api/product', { brief, audience: el('paud').value.trim() });
+    await api('/api/product', { mode: CURRENT_MODE, ...readModeForm() });
     if (f) {
       const dataUrl = await imageToJpeg(f);
       const uploaded = await api('/api/upload-ref', { dataUrl, filename: f.name });
@@ -1104,12 +1134,6 @@ async function approveStoryboardAndOpenFlow() {
   const script = readScriptEdits();
   const r = await api('/api/approve-sb', { script });
   if (r && r.ok === false) { alert('ສ້າງວິດີໂອບໍ່ໄດ້: ' + (r.error || '')); return; }
-  pull();
-}
-async function checkVideoClips() {
-  if (STATE.busy) return;
-  const r = await api('/api/check-video-clips', {});
-  if (r && r.ok === false) alert(r.error || 'ກວດຄລິບບໍ່ໄດ້');
   pull();
 }
 // ແປງຮູບທຸກຟໍແມັດ (ລວມ HEIC) → JPEG ຜ່ານ canvas
@@ -1296,14 +1320,25 @@ async function runAction(btn, path, body) {
   });
 }
 
-// ສືບຕໍ່ຕໍ່ຄລິບ — ໃຊ້ຕອນຄລິບຄົບແລ້ວແຕ່ບັອດຄ້າງກ່ອນຕໍ່/ດາວໂຫຼດ
-async function resumeCombine() {
-  if (!(await uiConfirm('ສືບຕໍ່ຕໍ່ຄລິບ ແລະ ດາວໂຫຼດ?\nໃຊ້ຄລິບທີ່ມີຢູ່ແລ້ວ ບໍ່ສ້າງວິດີໂອໃໝ່', { okText: 'ສືບຕໍ່' }))) return;
-  const btn = el('resumeBtn');
+// ປຸ່ມກູ້ວຽກດຽວ: storyboard → ຄລິບ → ຕໍ່ → ດາວໂຫຼດ → project ໃໝ່.
+// Backend ເລືອກ checkpoint ທີ່ຍັງບໍ່ຈົບ ແລະກວດ Flow ກ່ອນສ້າງຄລິບທີ່ຂາດ.
+async function resumeWorkflow(trigger) {
+  if (STATE.busy) return;
+  if (!(await uiConfirm('ກວດ ແລະ ສືບຕໍ່ວຽກ?\nບັອດຈະເລີ່ມຈາກ checkpoint ທີ່ຄ້າງ: Storyboard → ຄລິບ 1–3 → ຕໍ່ → ດາວໂຫຼດ → project ໃໝ່. ກ່ອນສ້າງຄລິບ ບັອດຈະກວດ Flow ເພື່ອບໍ່ໃຫ້ຊ້ຳ.', { okText: 'ສືບຕໍ່' }))) return;
+  const btn = trigger || el('resumeWorkflowBtn') || el('checkVideosBtn');
   el('toolMenu')?.classList.remove('open');
   await withBusy(btn, async () => {
-    try { await api('/api/resume-combine'); toast('ເລີ່ມສືບຕໍ່ຕໍ່ຄລິບແລ້ວ', 'ok'); pull(); }
-    catch (e) { toast('ສືບຕໍ່ບໍ່ໄດ້: ' + (e && e.message || e), 'err'); }
+    try {
+      const r = await api('/api/check-video-clips');
+      if (r && r.ok === false) { toast('ສືບຕໍ່ບໍ່ໄດ້: ' + (r.error || 'ສະຖານະວຽກຍັງບໍ່ພ້ອມ'), 'err'); return; }
+      const message = r?.stage === 'storyboard'
+        ? `ກຳລັງສືບຕໍ່ Storyboard ແຜ່ນ ${r.resumeFrom}`
+        : r?.stage === 'new-project'
+        ? 'ກຳລັງປິດ project ເກົ່າ ແລະ ສ້າງ project ໃໝ່'
+        : 'ກຳລັງກວດຄລິບໃນ Flow ແລະ ສືບຕໍ່ຂັ້ນທີ່ຂາດ';
+      toast(message, 'ok');
+      pull();
+    } catch (e) { toast('ສືບຕໍ່ບໍ່ໄດ້: ' + (e && e.message || e), 'err'); }
   });
 }
 
@@ -1321,21 +1356,6 @@ async function checkUpdate() {
       if (u.status === 'applied') { toast('ຕິດຕັ້ງອັບເດດແລ້ວ — ກຳລັງ restart', 'ok'); return; }
       toast('ໃຊ້ລຸ້ນຫຼ້າສຸດຢູ່ແລ້ວ (rev ' + (u.rev || 0) + ')', 'ok');
     } catch (e) { toast('ກວດອັບເດດບໍ່ໄດ້: ' + (e && e.message || e), 'err'); }
-  });
-}
-
-// ກວດຄລິບໃນ Flow: ຖ້າຍັງບໍ່ຄົບ 3 → ສ້າງສ່ວນທີ່ຂາດຕໍ່ → ຕໍ່ຄລິບ 1→2→3 ແລ້ວດາວໂຫຼດ
-async function checkVideoClips() {
-  if (!(await uiConfirm('ກວດຄລິບໃນ Flow?\nຖ້າຍັງບໍ່ຄົບ 3 ຄລິບ ບັອດຈະສ້າງສ່ວນທີ່ຂາດ ແລ້ວຕໍ່ 1→2→3 ແລະດາວໂຫຼດໃຫ້ອັດຕະໂນມັດ', { okText: 'ກວດເລີຍ' }))) return;
-  const btn = el('checkClipsBtn');
-  el('toolMenu')?.classList.remove('open');
-  await withBusy(btn, async () => {
-    try {
-      const r = await api('/api/check-video-clips');
-      if (r && r.ok === false) { toast('ກວດບໍ່ໄດ້: ' + (r.error || 'ສະຖານະວຽກຍັງບໍ່ພ້ອມ'), 'err'); return; }
-      toast('ກຳລັງກວດຄລິບໃນ Flow — ຖ້າຂາດ ຈະສ້າງ ແລ້ວດາວໂຫຼດໃຫ້', 'ok');
-      pull();
-    } catch (e) { toast('ກວດບໍ່ໄດ້: ' + (e && e.message || e), 'err'); }
   });
 }
 

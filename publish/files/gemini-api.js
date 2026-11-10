@@ -20,7 +20,7 @@ function extractFence(text, fence) {
 }
 
 // ເອີ້ນ generateContent. คืนข้อความคำตอบ. throw ຖ້າຜິດ/ຖືກ block.
-async function callGemini({ apiKey, model, prompt, images = [], temperature = 0.7, maxOutputTokens = 8192, json = false, timeoutMs = 180000, thinkingBudget = 0, retries = 2 }) {
+async function callGemini({ apiKey, model, prompt, images = [], temperature = 0.7, maxOutputTokens = 8192, json = false, timeoutMs = 180000, thinkingBudget = 0, retries = 4 }) {
   if (!apiKey) throw new Error('ບໍ່ມີ API key');
   const mdl = model || 'gemini-3.1-flash-lite';
   const parts = [{ text: String(prompt || '') }];
@@ -49,18 +49,39 @@ async function callGemini({ apiKey, model, prompt, images = [], temperature = 0.
     });
     try { data = await r.json(); } catch { data = {}; }
     // 503/429 = ແໜ້ນຊົ່ວຄາວ — ລໍແລ້ວລອງໃໝ່
-    if ((r.status === 503 || r.status === 429) && attempt < retries) { await new Promise(res => setTimeout(res, 2500 * (attempt + 1))); continue; }
+    if ((r.status === 503 || r.status === 429) && attempt < retries) {
+      const retryAfter = Number(r.headers && r.headers.get && r.headers.get('retry-after'));
+      const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1000, 30000)
+        : Math.min(2000 * (2 ** attempt), 30000);
+      await new Promise(res => setTimeout(res, delayMs));
+      continue;
+    }
     break;
   }
   if (!r.ok) {
     const msg = (data && data.error && data.error.message) || ('HTTP ' + r.status);
-    throw new Error('API ' + r.status + ': ' + String(msg).slice(0, 200));
+    const error = new Error('API ' + r.status + ': ' + String(msg).slice(0, 200));
+    // Keep the machine-readable cause: the worker must distinguish a temporary
+    // model limit from a bad key or a policy block before trying another model.
+    error.status = r.status;
+    error.apiMessage = String(msg);
+    error.errorDetails = data && data.error && data.error.details || [];
+    throw error;
   }
   const cand = data.candidates && data.candidates[0];
   const blockReason = data.promptFeedback && data.promptFeedback.blockReason;
   if (blockReason) throw new Error('API block (prompt): ' + blockReason);
   if (!cand) throw new Error('API ບໍ່ມີຄຳຕອບ');
   if (cand.finishReason === 'SAFETY' || cand.finishReason === 'PROHIBITED_CONTENT') throw new Error('API block: ' + cand.finishReason);
+  // Never treat a truncated or otherwise unfinished generation as a complete
+  // answer. Preserve the reason and token usage so the caller can diagnose it.
+  if (cand.finishReason && cand.finishReason !== 'STOP') {
+    const error = new Error(`API ຄຳຕອບບໍ່ຈົບ (${cand.finishReason})`);
+    error.finishReason = cand.finishReason;
+    error.usageMetadata = data.usageMetadata || null;
+    throw error;
+  }
   const text = (cand.content && cand.content.parts || []).map(p => p.text || '').join('');
   if (!text.trim()) throw new Error('API ຄຳຕອບວ່າງ (' + (cand.finishReason || '') + ')');
   return text;
@@ -72,7 +93,9 @@ async function verifyKey(apiKey, timeoutMs = 15000) {
   const r = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + r.status));
-  const models = (data.models || []).map(m => String(m.name || '').replace('models/', '')).filter(n => /generateContent/.test((data.models.find(x => x.name.endsWith(n)) || {}).supportedGenerationMethods || []) || true);
+  const models = (data.models || [])
+    .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+    .map(m => String(m.name || '').replace(/^models\//, ''));
   return models;
 }
 

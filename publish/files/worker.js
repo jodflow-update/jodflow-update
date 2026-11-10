@@ -21,18 +21,112 @@ let PORT = resolveCdpPort();
 
 // ── Gemini API (ແທນ web ເມື່ອຕັ້ງ key ໄວ້) ──
 // require ແບບປອດໄພ: ຖ້າ gemini-api.js ຍັງບໍ່ມີ (ເຄື່ອງທີ່ auto-update ມາແຕ່ worker.js
-// ແຕ່ຍັງບໍ່ reinstall) → geminiApi = null → ບັອດຕົກໄປໃຊ້ web ຄືເກົ່າ (ບໍ່ crash).
+// ແຕ່ຍັງບໍ່ reinstall) → geminiApi = null; ໂໝດ API ຈະລາຍງານຂໍ້ຜິດພາດ ບໍ່ຕົກໄປໃຊ້ web.
 let geminiApi = null;
-try { geminiApi = require('./gemini-api.js'); } catch { /* ບໍ່ມີໄຟລ໌ — ໃຊ້ web */ }
+try { geminiApi = require('./gemini-api.js'); } catch { /* API module unavailable */ }
 function userSettings() { try { return JSON.parse(fs.readFileSync(path.join(DATA, 'settings.json'), 'utf8')); } catch { return {}; } }
-// ຄືນ {key, model} ຖ້າໃຊ້ Gemini ແລະ ຕັ້ງ API key ໄວ້ ແລະ ມີ module; ບໍ່ດັ່ງນັ້ນ null (ໃຊ້ web)
+// ຄືນ key ຖ້າໃຊ້ Gemini API. Model ຖືກຫາອັດໂນມັດຈາກ
+// ListModels ຂອງ key ນີ້, ບໍ່ຮັບ model ຈາກ UI.
 function geminiApiCfg(aiKey) {
   if (!geminiApi || aiKey !== 'gemini') return null;
   const s = userSettings();
   if (s.useApi === false) return null;   // ຜູ້ໃຊ້ເລືອກໂໝດ "ໃຊ້ໜ້າເວັບ" — ບໍ່ໃຊ້ API ເຖິງມີ key
   const key = String(s.geminiApiKey || '').trim();
   if (!key) return null;
-  return { key, model: String(s.geminiApiModel || 'gemini-3.1-flash-lite').trim() };
+  return { key };
+}
+
+// Only textual Gemini Flash variants are valid fallbacks here.  Image/video/TTS/
+// Live models return a different kind of output and would break script parsing.
+function isTextFlashModel(model) {
+  const m = String(model || '').trim().toLowerCase();
+  return /^gemini-(?:[0-9.]+-)?flash(?:-lite)?(?:-preview)?$/.test(m)
+    || m === 'gemini-flash-latest';
+}
+function isModelCapacityError(error) {
+  return !!(error && (Number(error.status) === 429 || Number(error.status) === 503));
+}
+function errorSummary(error) {
+  return String(error && (error.apiMessage || error.message) || error || 'unknown error').slice(0, 180);
+}
+const AUTO_MODEL_ORDER = [
+  'gemini-3.1-flash-lite', 'gemini-3-flash-preview', 'gemini-flash-latest',
+  'gemini-2.5-flash-lite', 'gemini-2.5-flash',
+];
+const modelCache = new Map();
+async function getAutomaticModels(apiKey) {
+  const cached = modelCache.get(apiKey);
+  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.models;
+  const available = await geminiApi.verifyKey(apiKey);
+  const availableByLower = new Map(available.map(model => [String(model).toLowerCase(), String(model)]));
+  const preferred = AUTO_MODEL_ORDER
+    .map(model => availableByLower.get(model.toLowerCase()))
+    .filter(model => model && isTextFlashModel(model));
+  // Keep the known low-latency choices first, then permit any future textual
+  // Flash model returned by this key without admitting image/video/TTS models.
+  const extras = available.filter(isTextFlashModel)
+    .filter(model => !preferred.some(chosen => chosen.toLowerCase() === String(model).toLowerCase()))
+    .sort((a, b) => String(a).localeCompare(String(b)));
+  const models = [...preferred, ...extras];
+  if (!models.length) throw new Error('API key ບໍ່ມີ Flash model ທີ່ໃຊ້ຂຽນບົດ ແລະວິເຄາະຮູບໄດ້');
+  modelCache.set(apiKey, { at: Date.now(), models });
+  return models;
+}
+// Retries for one model happen inside callGemini.  The model list is verified
+// against the current API key first, then models are tried one at a time.
+async function callGeminiWithFallback(api, request) {
+  const eligibleModels = await getAutomaticModels(api.key);
+  const primary = eligibleModels[0];
+  const attempted = [];
+  async function run(model, fallback) {
+    try {
+      if (fallback) {
+        log(`Gemini API fallback → ${model}`);
+        sendEv('API_MODEL_FALLBACK', { model, after: attempted.slice(), reason: '429/503' });
+      } else log(`Gemini API model → ${model}`);
+      const result = await geminiApi.callGemini({ ...request, apiKey: api.key, model });
+      sendEv('API_MODEL_USED', { model, fallback: !!fallback });
+      return result;
+    } catch (error) {
+      attempted.push(model);
+      error.attemptedModels = attempted.slice();
+      throw error;
+    }
+  }
+  try { return await run(primary, false); }
+  catch (primaryError) {
+    if (!isModelCapacityError(primaryError)) throw primaryError;
+    const candidates = eligibleModels.slice(1);
+    if (!candidates.length) {
+      primaryError.noEligibleFallback = true;
+      throw primaryError;
+    }
+    let lastError = primaryError;
+    for (const model of candidates) {
+      try { return await run(model, true); }
+      catch (error) {
+        lastError = error;
+        // A bad request, safety block, or model incompatibility must not cause
+        // another blind switch; continue only for temporary capacity errors.
+        if (!isModelCapacityError(error)) throw error;
+      }
+    }
+    lastError.attemptedModels = attempted;
+    throw lastError;
+  }
+}
+
+// API mode is explicit: a provider failure must never silently open Gemini Web.
+function geminiApiRequested(aiKey) {
+  return aiKey === 'gemini' && userSettings().useApi !== false;
+}
+
+function failApiOnly(error) {
+  const detail = String((error && error.message) || error || 'Unknown Gemini API error');
+  const attempted = error && Array.isArray(error.attemptedModels) ? ` | models: ${error.attemptedModels.join(' → ')}` : '';
+  log('Gemini API ຜິດ: ' + detail + ' — ໂໝດ API ຈະບໍ່ເປີດ Gemini Web');
+  sendEv('API_ERROR', { provider: 'gemini', detail, status: error && error.status || 0, attemptedModels: error && error.attemptedModels || [], noEligibleFallback: !!(error && error.noEligibleFallback) });
+  process.exit(11);
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -646,22 +740,91 @@ async function cmdAsk() {
   // ── Gemini API path: ສົ່ງ prompt ກົງ (ບໍ່ຕ້ອງ Chrome/web) ──
   {
     const api = geminiApiCfg(aiKey);
+    if (geminiApiRequested(aiKey) && !api) {
+      failApiOnly('ບໍ່ພົບ Gemini API key ຫຼື API module');
+    }
     if (api) {
       try {
         log('ສົ່ງຄຳຖາມຜ່ານ Gemini API (' + api.model + ')');
         const images = (refImg && fs.existsSync(refImg)) ? [refImg] : [];
-        const text = await geminiApi.callGemini({ apiKey: api.key, model: api.model, prompt: msg, images, temperature: briefMode ? 0.6 : 0.85, maxOutputTokens: 8192 });
+        let text = '';
+        const maxAttempts = briefMode ? 1 : 2;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const prompt = attempt === 0 ? msg : briefMode
+              ? `${msg}\n\nREPAIR: The previous reply was incomplete or truncated. Return the COMPLETE answer again in the same four-section format, with all four markers and exactly twelve numbered narration lines. Do not abbreviate or stop early.`
+              : `${msg}\n\nREPAIR: The previous reply was incomplete or truncated. Return the COMPLETE answer again, including CONTINUITY and Shot 1 through Shot 12, each exactly once, using the exact required Shot N | role | seconds format. Do not abbreviate or stop early.`;
+          try {
+            text = await callGeminiWithFallback(api, { prompt, images, temperature: briefMode ? 0.6 : 0.85, maxOutputTokens: 8192 });
+          } catch (e) {
+            log(`Gemini API attempt ${attempt + 1}/${maxAttempts} failed: ${e && e.message || e}`);
+            if (e && (e.finishReason || e.usageMetadata)) {
+              log(`Gemini API diagnostics: finishReason=${e.finishReason || 'unknown'} usage=${JSON.stringify(e.usageMetadata || {})}`);
+            }
+            if (attempt + 1 >= maxAttempts) throw e;
+            continue;
+          }
+          const trimmed = String(text).trim();
+          const complete = briefMode
+            ? (() => {
+              const content = geminiApi.extractFence(trimmed);
+              const labels = ['NAME', 'DESC', 'STORY', 'NARRATION'];
+              const markerPositions = labels.map(label => content.search(new RegExp(`^[ \\t]*={2,}[ \\t]*${label}[ \\t]*={2,}[ \\t]*$`, 'im')));
+              if (markerPositions.some(position => position < 0) || !markerPositions.every((position, i) => i === 0 || position > markerPositions[i - 1])) return false;
+              const narration = content.slice(markerPositions[3]);
+              const numbers = [...narration.matchAll(/^\s*(\d+)[.)៖:]\s*.+$/gm)].map(m => Number(m[1]));
+              return numbers.length === 12 && new Set(numbers).size === 12 && Array.from({ length: 12 }, (_, i) => i + 1).every(n => numbers.includes(n));
+            })()
+            : (() => {
+              const content = geminiApi.extractFence(trimmed, 'jodflow');
+              const matches = [...content.matchAll(/^Shot\s+(\d{1,2})\s*\|/gmi)].map(m => Number(m[1]));
+              return matches.length === 12 && new Set(matches).size === 12 && Array.from({ length: 12 }, (_, i) => i + 1).every(n => matches.includes(n));
+            })();
+          if (complete) {
+            if (!briefMode) {
+              const content = geminiApi.extractFence(trimmed, 'jodflow');
+              const blocks = content.split(/^-{3,}\s*$/m).map(part => part.trim()).filter(Boolean);
+              const validShots = blocks.filter(part => {
+                const header = part.match(/^Shot\s+(\d{1,2})\s*\|\s*([\w-]+)\s*\|\s*([\d.]+)\s*s[^\n]*/im);
+                if (!header) return false;
+                const body = part.replace(header[0], '').trim();
+                const scene = body.match(/^SCENE:\s*(.+)$/im);
+                const dialogue = body.replace(/^SCENE:.*$/im, '').trim();
+                return Number(header[1]) >= 1 && Number(header[1]) <= 12 && !!scene && !!dialogue;
+              });
+              if (validShots.length !== 12) {
+                log(`Gemini API script structure incomplete: ${validShots.length}/12 parseable shots`);
+                if (attempt + 1 >= maxAttempts) {
+                  const error = new Error(`Gemini API ສົ່ງຊັອດທີ່ parse ໄດ້ພຽງ ${validShots.length}/12`);
+                  error.incompleteAnswer = true;
+                  throw error;
+                }
+                continue;
+              }
+            }
+            break;
+          }
+          log(`Gemini API returned incomplete answer (${briefMode ? 'brief' : 'script'}; attempt ${attempt + 1}/${maxAttempts})`);
+          if (attempt + 1 >= maxAttempts) {
+            const error = new Error('Gemini API ສົ່ງຄຳຕອບບໍ່ຄົບ 12 shot');
+            error.incompleteAnswer = true;
+            throw error;
+          }
+        }
         // ຂຽນ response ລົງ outFile ຄືກັນກັບ web — server ຈະ parse ເອງ.
         // ສຳລັບ non-brief ຫຸ້ມ ```jodflow ຖ້າ AI ບໍ່ໄດ້ໃສ່ (ຄືທີ່ web normalize)
         let out = String(text).trim();
         if (briefMode) out = geminiApi.extractFence(out);  // ຖອດ ``` ``` ອອກ ບໍ່ດັ່ງນັ້ນແຖວ ``` ປົນເຂົ້າ NARRATION (ກາຍ 13 ແຖວ)
         else if (!out.startsWith('```')) out = '```jodflow\n' + out + '\n```';
         fs.writeFileSync(outFile, out, 'utf8');
-        log('ໄດ້ຄຳຕອບ (API) ' + out.length + ' ຕົວອັກສອນ');
+        log('ໄດ້ຄຳຕອບ (API) ' + out.length + ' ຕົວອັກສອນ; validation passed');
         sendEv('ASK_DONE', { via: 'api', len: out.length });
         process.exit(0);
       } catch (e) {
-        log('Gemini API ຜິດ: ' + (e && e.message || e) + ' — ຕົກໄປໃຊ້ web');
+        if (e && e.incompleteAnswer) {
+          sendEv('ASK_INCOMPLETE', { via: 'api', shots: 0 });
+          process.exit(5);
+        }
+        failApiOnly(e);
       }
     }
   }
@@ -875,9 +1038,6 @@ async function attachProductImage(pg, filePath, opts = {}) {
   // ລຳດັບຊື່ທີ່ຈະລອງຄົ້ນ: ຊື່ຈາກ Flow (ຖ້າມີ) → ຊື່ໄຟລ໌ → ຊື່ໄຟລ໌ບໍ່ມີນາມສະກຸນ
   const queries = [opts.assetLabel, assetName, stem].filter(Boolean);
 
-  // ຢ່າອີງພຽງວ່າມີຮູບຕິດຢູ່ກັບ prompt ແລ້ວ — ອາດເປັນຮູບເກົ່າ/ຮູບຄົນລະສິນຄ້າ.
-  // ຕ້ອງຄົ້ນຫາ assetName ຈາກ library ແລະ add ຮູບທີ່ຖືກຕ້ອງທຸກຄັ້ງ.
-
   // ນັບ "ingredient" (ຮູບທີ່ແນບໃນ prompt) — ໃຊ້ຢືນຢັນວ່າແນບເພີ່ມຈິງ.
   // ແກ້ bug: ຕອນແນບຮູບທີ 2 (ຄົນ) ຕໍ່ຈາກຮູບທີ 1 (ສິນຄ້າ) code ເຄີຍ return true
   // ທັນທີໂດຍບໍ່ກວດ → ຮູບຄົນບໍ່ຕິດຈິງ ແຕ່ລະບົບວ່າ 2/2.
@@ -908,9 +1068,8 @@ async function attachProductImage(pg, filePath, opts = {}) {
   };
   const addToPrompt = pg.locator(sel.pickerAdd).first();
 
-  // 2) ຫາຮູບເກົ່າໃນ library ກ່ອນ
+  // Check the library only after the prompt itself has been checked.
   await openPicker();
-  await pg.locator(sel.pickerItem).first().waitFor({ state: 'visible', timeout: 12000 }).catch(() => {});
 
   // ລໍໃຫ້ຈຳນວນລາຍການຢຸດນິ້ງ — ນັບວ່ານິ້ງສະເພາະເມື່ອ "ມີລາຍການແລ້ວ".
   // ການຮັບ 0 ວ່ານິ້ງເຮັດໃຫ້ບັອດສະຫຼຸບພາຍໃນ ~0.8 ວິວ່າ library ຫວ່າງ
@@ -918,14 +1077,21 @@ async function attachProductImage(pg, filePath, opts = {}) {
   const settleOptions = async (maxMs = 9000) => {
     const deadline = Date.now() + maxMs;
     let prev = -1, stable = 0;
+    let sawOptions = false;
     while (Date.now() < deadline) {
       const c = await pg.locator(sel.pickerItem).count().catch(() => 0);
+      if (c > 0) sawOptions = true;
+      const emptyState = await pg.evaluate(() => {
+        const scope = document.querySelector('[role="dialog"]') || document.body;
+        return /no (?:assets|media|images|items|results)|(?:no assets|no media)|(?:ບໍ່ມີ|ບໍ່ພົບ|ยังไม่มี|ไม่พบ)(?:ສື່|ຮູບພາບ|ລາຍການ|สื่อ|รูปภาพ|รายการ)/i.test(scope.innerText || '');
+      }).catch(() => false);
+      if (!c && emptyState) return { count: 0, ready: true, sawOptions: false, empty: true };
       stable = (c > 0 && c === prev) ? stable + 1 : 0;
       prev = c;
-      if (stable >= 3) return c;
+      if (stable >= 3) return { count: c, ready: true, sawOptions: true, empty: false };
       await sleep(250);
     }
-    return prev > 0 ? prev : 0;
+    return { count: prev > 0 ? prev : 0, ready: false, sawOptions, empty: false };
   };
 
   // ຢືນຢັນການເພີ່ມ: Flow ແຕ່ລະລຸ້ນໃຊ້ປຸ່ມຄົນລະຊື່ ແລະ ບາງລຸ້ນເພີ່ມໃຫ້ເລີຍ
@@ -973,14 +1139,16 @@ async function attachProductImage(pg, filePath, opts = {}) {
 
   // ຂັ້ນ 1 — ເບິ່ງລາຍການທີ່ສະແດງຢູ່ເລີຍ ໂດຍບໍ່ພິມຫຍັງ (ວິທີເດີມ: ໄວ ແລະ ເຄີຍໄດ້ຜົນ).
   // ຕ້ອງລອງອັນນີ້ກ່ອນສະເໝີ ການຂ້າມໄປພິມຄົ້ນທັນທີຄືເຫດທີ່ເຮັດໃຫ້ຊ້າລົງ ແລະ ພາດທຸກຄັ້ງ.
-  const shown = await settleOptions(6000);
-  log(`library ສະແດງ ${shown} ລາຍການ — ລອງຈັບຈາກລາຍການກ່ອນ`);
-  for (const q of queries) {
-    if (await pickFrom(q, 'ຈາກລາຍການ')) return true;
+  const library = await settleOptions(6000);
+  log(`Flow library ${library.ready ? `ພ້ອມ (${library.count} ລາຍການ)` : `ຍັງບໍ່ຢືນຢັນວ່າໂຫຼດຄົບ (${library.count} ລາຍການທີ່ເຫັນ)`}`);
+  if (library.ready && library.count > 0) {
+    for (const q of queries) {
+      if (await pickFrom(q, 'ຈາກລາຍການ')) return true;
+    }
   }
 
   // ຂັ້ນ 2 — ຍັງບໍ່ພົບ ຈຶ່ງພິມຄົ້ນ (ພາຍໃນງົບເວລາທີ່ເຫຼືອ)
-  if (hasSearch) {
+  if (library.ready && library.count > 0 && hasSearch) {
     for (const q of queries) {
       if (Date.now() > until) { log('  ໝົດງົບເວລາຫາຮູບເກົ່າ — ໄປອັບໂຫຼດ'); break; }
       await search.click().catch(() => {});
@@ -994,12 +1162,11 @@ async function attachProductImage(pg, filePath, opts = {}) {
     await search.fill('').catch(() => {});   // ລ້າງຄຳຄົ້ນ ບໍ່ດັ່ງນັ້ນປຸ່ມອັບໂຫຼດອາດບໍ່ຕອບ
   }
 
-  // 3) ບໍ່ພົບ → ປິດແລ້ວເປີດ picker ໃໝ່ ຈຶ່ງອັບໂຫຼດ (ການຄົ້ນຫາຄ້າງຢູ່ເຮັດໃຫ້ປຸ່ມອັບໂຫຼດບໍ່ຕອບ)
-  log('ບໍ່ພົບໃນ library — ອັບໂຫຼດໃໝ່:', assetName);
+  // No exact existing asset (or the library did not become ready): upload now.
+  log(`${library.ready ? 'ບໍ່ພົບໃນ library' : 'library ບໍ່ຢືນຢັນວ່າພ້ອມ'} — ອັບໂຫຼດເລີຍ:`, assetName);
   for (let attempt = 1; attempt <= 2; attempt++) {
-    await pg.keyboard.press('Escape').catch(() => {});
-    await sleep(900);
-    const uploadBtn = await openPicker();
+    let uploadBtn = pg.locator(sel.pickerUpload).first();
+    if (!(await uploadBtn.isVisible().catch(() => false))) uploadBtn = await openPicker();
     const [chooser] = await Promise.all([
       pg.waitForEvent('filechooser', { timeout: 20000 }),
       uploadBtn.click(),
@@ -1012,7 +1179,7 @@ async function attachProductImage(pg, filePath, opts = {}) {
     }
     if (await uploadBtn.isVisible().catch(() => false)) { await pg.keyboard.press('Escape').catch(() => {}); await sleep(600); }
     // ຢືນຢັນວ່າ ingredient ເພີ່ມຈິງ ຈຶ່ງຖືວ່າສຳເລັດ — ກັນ false success
-    if (await waitAttached(startCount)) { log('ແນບຮູບສຳເລັດ'); return true; }
+    if (await waitAttached(startCount)) { log(`ແນບຮູບ "${assetName}" ສຳເລັດ`); return true; }
     log(`  ອັບແລ້ວແຕ່ ingredient ບໍ່ເພີ່ມ (ຮອບ ${attempt}/2) — ລອງໃໝ່`);
   }
   log('NOT VERIFIED: ອັບຮູບແລ້ວແຕ່ແນບບໍ່ຕິດ');
@@ -1426,10 +1593,11 @@ async function exportSceneToFile(b, pg, outFile, requestedOut, titlesLen) {
     log('ບໍ່ພົບປຸ່ມດາວໂຫຼດ');
     sendEv('COMBINE_MANUAL', { reason: 'scene download button not found', url: pg.url() }); await b.close(); return null;
   }
-  // ບັງຄັບບ່ອນບັນທຶກຜ່ານ CDP — ~/Downloads ເຊື່ອບໍ່ໄດ້ ເພາະ Chrome ບລັອກການດາວໂຫຼດອັດຕະໂນມັດຊ້ຳໆ
-  const tmpDir = path.join(DATA, 'dl-tmp');
-  try { fs.mkdirSync(tmpDir, { recursive: true }); } catch { /* reported when download starts */ }
-  try { for (const f of fs.readdirSync(tmpDir)) { try { fs.unlinkSync(path.join(tmpDir, f)); } catch { /* Windows scanner may temporarily lock one old file */ } } } catch { /* ຂ້າມ */ }
+  // ໃຫ້ Flow ດາວໂຫຼດເຂົ້າ Downloads ໂດຍກົງ. ຫ້າມສ້າງ dl-tmp
+  // ຫຼືໂຟນເດີ້ລູກອື່ນໃນ Downloads; ກວດແຕ່ໄຟລ໌ທີ່ເກີດຫຼັງຈາກກົດ download.
+  const userDownloads = downloadsDir();
+  try { fs.mkdirSync(userDownloads, { recursive: true }); } catch { /* reported when download starts */ }
+  const tmpDir = userDownloads;
   // Incognito's target browserContextId is not accepted by
   // Browser.setDownloadBehavior in this Chrome build. Configure the actual
   // Flow page instead; the browser-level call failed before the click.
@@ -1467,13 +1635,16 @@ async function exportSceneToFile(b, pg, outFile, requestedOut, titlesLen) {
   await dlBtn.click();
   log('ກົດດາວໂຫຼດ — Flow ກຳລັງສົ່ງອອກ scene (ອາດໃຊ້ເວລາ 1-5 ນາທີ)');
   // Some Chrome builds save the MP4 but never emit Page.downloadProgress.
-  // Watch the dedicated empty temp directory as well. Never click export a
+  // Watch only newly-created MP4 files in Downloads. Never click export a
   // second time merely because an event is missing (that created duplicates).
   let fileCandidate = '', fileSize = 0, stableFile = 0;
   for (let i = 0; i < 160; i++) {
     if (dlState === 'canceled' || dlState === 'completed') break;
     const files = fs.readdirSync(tmpDir).filter(f => /\.mp4$/i.test(f));
-    const partial = fs.readdirSync(tmpDir).some(f => /\.crdownload$/i.test(f));
+    const partial = fs.readdirSync(tmpDir).some(f => {
+      if (!/\.crdownload$/i.test(f)) return false;
+      try { return fs.statSync(path.join(tmpDir, f)).mtimeMs >= clickAt - 5000; } catch { return false; }
+    });
     const newest = files.map(f => path.join(tmpDir, f))
       .filter(f => fs.statSync(f).mtimeMs >= clickAt - 5000)
       .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0];
@@ -1486,7 +1657,7 @@ async function exportSceneToFile(b, pg, outFile, requestedOut, titlesLen) {
         fs.readSync(fd, head, 0, 8, 0); fs.closeSync(fd);
         if (head.subarray(4, 8).toString('ascii') === 'ftyp') {
           dlState = 'completed'; dlName = path.basename(newest); dlBytes = size;
-          log('  ພົບ MP4 ຂຽນສຳເລັດໃນ dl-tmp ແມ່ນບໍ່ມີ Chrome event');
+          log('  ພົບ MP4 ຂຽນສຳເລັດໃນ Downloads ແມ່ນບໍ່ມີ Chrome event');
           break;
         }
       }
@@ -1494,8 +1665,7 @@ async function exportSceneToFile(b, pg, outFile, requestedOut, titlesLen) {
     await sleep(3000);
   }
 
-  // Chrome ບາງເທື່ອບໍ່ເຊື່ອ downloadPath ທີ່ສັ່ງ ແລ້ວລົງ ~/Downloads ດ້ວຍຊື່ຈິງແທນ
-  // ຈຶ່ງຕ້ອງຫາທັງ 2 ບ່ອນ ບໍ່ດັ່ງນັ້ນໄຟລ໌ມາຄົບແຕ່ລະບົບລາຍງານວ່າລົ້ມເຫຼວ
+  // ກວດ MP4 ທີ່ Flow ຫາກໍ່ດາວໂຫຼດເທົ່ານັ້ນ.
   const pickNewest = (dir, wantName, isGuid = false) => {
     let best = '', bestAt = 0;
     try {
@@ -1517,7 +1687,6 @@ async function exportSceneToFile(b, pg, outFile, requestedOut, titlesLen) {
   let got = dlState === 'completed' && fileCandidate ? pickNewest(tmpDir, path.basename(fileCandidate)) : '';
   if (!got && dlState === 'completed' && dlName) got = pickNewest(tmpDir, dlName);
   if (!got && dlState === 'completed') got = pickNewest(tmpDir, '');
-  if (!got && dlState === 'completed' && dlName) got = pickNewest(downloadsDir(), dlName);
   if (got) log('  ພົບໄຟລ໌: ' + got);
   try { await ps.send('Page.setDownloadBehavior', { behavior: 'default' }); } catch { /* ຂ້າມ */ }
   await ps.detach().catch(() => {});
@@ -1533,18 +1702,19 @@ async function exportSceneToFile(b, pg, outFile, requestedOut, titlesLen) {
   }
   let deliveredFile = '';
   try {
-    const userDownloads = downloadsDir();
-    fs.mkdirSync(userDownloads, { recursive: true });
     const existing = fs.readdirSync(userDownloads).map(name => /^AI(\d+)\.mp4$/i.exec(name)).filter(Boolean);
     let next = Math.max(223, ...existing.map(match => Number(match[1]))) + 1;
     while (!deliveredFile) {
       const candidate = path.join(userDownloads, `AI${next}.mp4`);
-      try { copyWithRetry(got, candidate, true); deliveredFile = candidate; }
-      catch (e) { if (e.code !== 'EEXIST') throw e; next++; }
+      try {
+        // Keep the internal recovery copy before moving the actual browser
+        // download. Moving avoids leaving a second, unnamed MP4 in Downloads.
+        if (!samePath(requestedOut, got)) copyWithRetry(got, requestedOut);
+        if (samePath(path.dirname(got), userDownloads)) fs.renameSync(got, candidate);
+        else copyWithRetry(got, candidate, true);
+        deliveredFile = candidate;
+      } catch (e) { if (e.code !== 'EEXIST') throw e; next++; }
     }
-    // Also retain the internal copy for recovery/debugging, but report the
-    // Downloads copy as the actual user deliverable.
-    if (!samePath(requestedOut, deliveredFile)) copyWithRetry(got, requestedOut);
     const delivered = fs.statSync(deliveredFile);
     const fd = fs.openSync(deliveredFile, 'r');
     const header = Buffer.alloc(8);
@@ -2725,10 +2895,13 @@ async function cmdDescribePack() {
 
   // ── Gemini API path: ວິເຄາະຮູບກົງ (ບໍ່ຕ້ອງ Chrome) ──
   const api = geminiApiCfg(aiKey);
+  if (geminiApiRequested(aiKey) && !api) {
+    failApiOnly('ບໍ່ພົບ Gemini API key ຫຼື API module');
+  }
   if (api) {
     try {
       log('ວິເຄາະຮູບຜ່ານ Gemini API (' + api.model + ')');
-      const text = await geminiApi.callGemini({ apiKey: api.key, model: api.model, prompt: ASK, images: [imgPath], temperature: 0.4, maxOutputTokens: 4096 });
+      const text = await callGeminiWithFallback(api, { prompt: ASK, images: [imgPath], temperature: 0.4, maxOutputTokens: 4096 });
       const clean = geminiApi.extractFence(text, fence);
       const minClean = kind === 'person' ? 60 : 120;
       if (clean.length < minClean) { log('API: AI ບໍ່ໄດ້ຂຽນຄຳບັນຍາຍມາ'); process.exit(5); }
@@ -2742,7 +2915,7 @@ async function cmdDescribePack() {
       sendEv('PACK_DESC', { kind, chars: clean.length, via: 'api' });
       process.exit(0);
     } catch (e) {
-      log('Gemini API ຜິດ: ' + (e && e.message || e) + ' — ຕົກໄປໃຊ້ web');
+      failApiOnly(e);
     }
   }
 

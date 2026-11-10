@@ -138,7 +138,7 @@ ${LOCATION_PROVENANCE_LOCK}
 1) ແຕ່ງເປັນພາສາລາວທັງໝົດ (ຍົກເວັ້ນ metadata ໃນເຄື່ອງໝາຍ []).
 2) ${AD_SEQUENCE_LOCK} ຖ້າຜູ້ໃຊ້ບັງຄັບ Story ເອງ ໃຫ້ຮັກສາ Story Authority ແຕ່ຈັດຈັງຫວະໃຫ້ກົງລຳດັບນີ້ເທົ່າທີ່ Story ອະນຸຍາດ.
 3) ທຸກ Shot 1-12 ຕ້ອງມີບົດເວົ້າລາວເປັນປະໂຫຍກສົມບູນ: ເປົ້າໝາຍ 8-12 ພະຍາງ, ຍອມຮັບ 6-14. ຫ້າມຄຳສັ້ນແບບຫົວຂໍ້, ຫ້າມບັນຍາຍພາບ/ເຫດການ, ຫ້າມ narrator. Shot 1-11 ຕ້ອງເປັນຄົນທີ່ເຫັນໃນພາບເວົ້າກັບຄົນອື່ນ ຫຼືເວົ້າກັບກ້ອງ. ນຳລາຍລະອຽດ/ສັບພະຄຸນທີ່ຜູ້ໃຊ້ໃຫ້ມາກະຈາຍເປັນຄຳເວົ້າໃນ Shots 3-10 ໂດຍບໍ່ປະດິດຄຳອ້າງໃໝ່. Shot 12 ເປັນຂໍ້ຍົກເວັ້ນ: ໃຊ້ສຽງ brand voice CTA ທັບພາບ Hero ໄດ້ ໂດຍຮູບຍັງຫ້າມມີຄົນ/ມື/ຮ່າງກາຍ.
-4) ສັດສ່ວນ presenter/customer 70/30 ເປັນພຽງຄ່າແນະນຳ, ບໍ່ແມ່ນເກນບລັອກ. ໃຫ້ຮັກສາ role ແລະບົດພາກຕາມ STORY AUTHORITY LOCK; ຖ້າສັດສ່ວນຕ່າງຈາກ 70/30 ກໍຫ້າມປ່ຽນ, ຕັດ, ຫຼື reject ບົດ.
+4) *** SPEAKER ROLE LOCK: role ໃນຫົວແຖວຂອງແຕ່ລະ Shot ແມ່ນຄົນທີ່ເປັນເຈົ້າຂອງບົດເວົ້າຂອງ Shot ນັ້ນໂດຍກົງ. presenter = ຜູ້ນຳສະເໜີ/ຜູ້ແນະນຳ; customer = ລູກຄ້າ/ຜູ້ໃຊ້ປະສົບການ. ຫ້າມສະຫຼັບ role ລະຫວ່າງບົດ ຫຼືມອບບົດຂອງ role ໜຶ່ງໃຫ້ອີກ role. ທຸກ Character ID ໃນ CONTINUITY ຕ້ອງລະບຸ role; SCENE ຂອງແຕ່ລະ Shot ຕ້ອງໃຊ້ Character ID ທີ່ກົງກັບ role ຜູ້ເວົ້າ. ຮັກສາ role ຕາມ STORY AUTHORITY LOCK; ສັດສ່ວນ presenter/customer 70/30 ເປັນພຽງຄ່າແນະນຳ ແລະຫ້າມໃຊ້ເປັນເຫດຜົນປ່ຽນ ຫຼືຕັດບົດ.
 5) ຫ້າມອ້າງວ່າ ສິນຄ້ານີ້ຮັກສາ/ປິ່ນປົວ/ຮັບປະກັນຜົນ 100%. ໃຊ້ແບບ "ປະສົບການສ່ວນຕົວ" ແລະ "ຮູ້ສຶກດີຂຶ້ນ" ແທນ.
 6) Shot 1-11 ຕ້ອງມີຄົນ/ການກະທຳ ແລະຫ້າມ narrator/off-screen voice-over. Shot 11 ຫຼື Shot 12 ຮັບ CTA ປິດການຂາຍ. Shot 12 ແມ່ນພາບ hero ສິນຄ້າຢ່າງດຽວ ບໍ່ມີຄົນ ຫຼືມື, ແຕ່ມີສຽງ brand voice CTA ໄດ້.
 7) ບໍ່ຄວນມີຄຳສັບ "ສະບາຍດີ", "ຂອບໃຈ" ຫຼື ຄຳ filler.
@@ -496,9 +496,9 @@ const FLOW_LOCKS = {
   characterLocation: 'CHARACTER AND LOCATION LOCK: Preserve each supplied person’s face, age, hair, clothing, accessories, location layout, lighting direction, time of day and props. Keep the supplied commercial location; do not substitute a hospital, clinic, pharmacy or unrelated location. LOCATION PROVENANCE IS FIXED: if LocationSource is NEUTRAL_UNNAMED, keep an unnamed generic setting and never add or imply a city, province, country, monument, temple, landmark, civic architecture, identifiable skyline or location sign. In particular, never introduce Patuxai or any other famous landmark unless the user explicitly named it.',
   actionStoryboard: 'STORYBOARD ACTION LOCK: Follow the accepted storyboard action, speed, number of people, movement direction and camera movement exactly. A dense crowd remains dense across foreground, midground, background and frame edges. Running, rushing and surging remain running, rushing and surging; do not reduce them to walking, standing or a small group.',
   outputFormat: 'OUTPUT FORMAT LOCK: Every video asset is one full-bleed vertical 9:16 moving picture that fills the canvas edge-to-edge. Return each requested clip as a separate video asset. NEVER create two panels or two video areas: no top/bottom stacked scenes, no side-by-side scenes, no horizontal split, no vertical split, no divider line, no two simultaneous moments, no 2x2 grid, collage, split-screen, storyboard page, paper sheet, table, contact sheet, panel border, white margin, black bar, rounded card, picture-in-picture or combined image. Each moment must occupy the entire 9:16 canvas by itself.',
-  cleanFrame: 'ABSOLUTE CLEAN-FRAME LOCK — HIGHEST PRIORITY: Lao dialogue is AUDIO ONLY. Do not render generated writing or interface elements anywhere in the video: no subtitles, captions, titles, text boxes, lower-thirds, nameplates, tickers, callouts, floating words or numbers, shot/scene numbers, internal ids, role names, UI, watermarks or decorative typography. All bracketed speaker metadata and storyboard instructions must stay off screen. NEVER create a two-panel composition, top/bottom duplicate, side-by-side duplicate, divider or simultaneous before/after layout. Existing physical writing on the accepted real product may remain only in its original position, scale and appearance; never rewrite, enlarge, translate or recreate it. Non-text motion graphics may contain no letters or numbers and must not cover the product or a speaker face.',
+  cleanFrame: 'ABSOLUTE CLEAN-FRAME LOCK — HIGHEST PRIORITY: Lao dialogue is AUDIO ONLY. Do not render generated writing or interface elements anywhere in the video: no subtitles, captions, titles, text boxes, lower-thirds, nameplates, tickers, callouts, floating words or numbers, shot/scene numbers, internal ids, role names, UI, watermarks or decorative typography. All bracketed speaker metadata and storyboard instructions must stay off screen. NEVER create a two-panel composition, top/bottom duplicate, side-by-side duplicate, divider or simultaneous before/after layout. Existing physical writing on the accepted real product may remain only in its original position, scale and appearance; never rewrite, enlarge, translate or recreate it. Keep the subject and speaking face sharply in focus with clean natural detail and stable exposure. No deliberate soft focus, defocus, Gaussian blur, haze, ghosting, double exposure, motion trails, pixelation, low-resolution texture, compression artifacts, screen glare or focus pumping; natural background depth of field is allowed but the active speaker stays sharp. Any frame containing a sheet edge, border, storyboard text, blur, ghosting or compression artifact is invalid and must be regenerated cleanly. Non-text motion graphics may contain no letters or numbers and must not cover the product or a speaker face.',
   productRef: 'MANDATORY PRODUCT SOURCE-PIXEL LOCK — HIGHEST PRIORITY: The actual uploaded product photo attached to this request is the ONLY permitted source for the product package. Use that attached image and nothing else. Treat the package as a fixed photographic object, not a style reference and not a text description. Preserve its exact source pixels, silhouette, proportions, colors, logo, printed Lao lettering and artwork. Do not draw, redraw, regenerate, redesign, replace, recolor, simplify, reinterpret, approximate, infer or invent any package, bottle, box, label, logo or product. Do not use a text description to create a substitute. If the attached product image is missing, rejected, inaccessible or cannot be preserved exactly, STOP generation and report PRODUCT FIDELITY NOT VERIFIED. A generated lookalike is a failure.',
-  audioSource: 'STRICT DIALOGUE LOCK: Every Shot 1-12 MUST contain and speak its exact assigned Lao dialogue line; never omit a line. For Shots 1-11, the visible assigned character speaks with synchronized mouth movement. No narrator, off-screen speech, paraphrase, additions, crowd speech or improvised words in Shots 1-11. Shot 12 is the only exception to visible lip-sync: keep the visual product-only with zero people, hands or body parts, while speaking the exact Shot 12 line as a clean off-screen brand voice CTA.',
+  audioSource: 'STRICT DIALOGUE LOCK: Every Shot 1-12 MUST contain and speak its exact assigned Lao dialogue line; never omit, paraphrase, move or add a line. For Shots 1-11, only the visible character assigned to that Shot role speaks with synchronized mouth movement; all other visible people are silent. No narrator, off-screen speech, overlap, crowd speech or improvised words in Shots 1-11. Shot 12 follows the explicit mode-specific instruction in this prompt: product mode uses an off-screen brand voice over a product-only hero; review mode uses the on-camera presenter; course mode uses the on-camera instructor.',
   antiMontage: 'ANTI-MONTAGE / SEPARATE-ASSET LOCK: Return one separate video file per requested clip. Do not combine clips or scenes into one timeline, montage, collage, split-screen, storyboard reel, or combined export.',
   labelIntegrity: 'LABEL INTEGRITY LOCK: The attached current product photo is the sole authority for the package. The PACKAGE ARTWORK description is QA metadata only and is not permission to draw a package. Preserve the photographed container type, silhouette, cap or closure, proportions, material, colours, emblem, wordmark, label layout, artwork and printed details exactly as photographed. Keep that same package when held, angled, distant or moving. A generated lookalike, generic package, altered logo, invented lettering, recoloured label or redesigned artwork is a failure.',
   audioPacing: 'ON-CAMERA DIALOGUE PACING LOCK: Natural, clear Lao dialogue by the visible speaker with synchronized lip movement. Fit the complete exact line within its configured shot duration. For a longer line, begin speaking at the very start of that shot, remove unnecessary pauses, and speak briskly only as much as needed to finish before the cut. Keep every word intelligible and the lip movement synchronized. Never omit, shorten, paraphrase, overlap, or move words to another shot. Do not change shot duration or speed up the video itself. No announcer-style voice-over.',
@@ -523,10 +523,10 @@ IF YOU CANNOT PRESERVE IMAGE 2: leave the product out of the frame. Never replac
 
 // ກົດ "ຄົນຕ້ອງເປັນຄົນດຽວກັນເປະໆ" (ໂໝດຄົນລິວິວ/ຂາຍຄອດ): Flow ຕ້ອງສ້າງໜ້າຄົນ
 // ໃຫ້ຄືຮູບທີ່ແນບທຸກຊັອດ ບໍ່ສຸ່ມໜ້າໃໝ່.
-const CHARACTER_FIDELITY_LOCK = `*** SAME-PERSON-EVERY-TIME LOCK — enforce on every single frame of every shot ***
-ONE AND THE SAME PERSON: the on-camera presenter is the exact human in the attached person reference photo(s) and nobody else. Across all four shots of this clip, and across all three clips, the presenter must be the SAME individual — identical face, identical facial features, identical skin tone, identical hair, identical body build, identical apparent age and gender. A viewer freezing any two frames that show the presenter must see the same human.
-WHEN THE PERSON REAPPEARS: render the same face identically. Do not swap, age, slim, beautify, re-cast or redesign the person between shots. If unsure how they looked, copy the attached person photo(s) exactly.
-IF YOU CANNOT MATCH THE REFERENCE FACE: do not invent a different-looking person; keep the camera off the face rather than showing a stranger.`;
+const CHARACTER_FIDELITY_LOCK = `*** SAME-PRESENTER-EVERY-TIME LOCK — enforce on every single frame of every shot ***
+PRESENTER IDENTITY: the character whose role is presenter is the exact human in the attached person reference photo(s). Across every shot assigned to presenter, and across all three clips, keep that presenter the SAME individual — identical face, facial features, skin tone, hair, build, apparent age and gender. Apply this reference only to presenter-role shots; it does not change or replace the customer.
+WHEN THE PRESENTER REAPPEARS: render the same face identically. Do not swap, age, slim, beautify, re-cast or redesign this person. If unsure, copy the attached person photo(s) exactly.
+IF YOU CANNOT MATCH THE PRESENTER REFERENCE FACE: do not invent a different presenter; keep the camera off the face rather than showing a stranger. The customer remains the separate character assigned customer in the accepted storyboard and continuity card.`;
 
 // ໂໝດ: product (ຄືເກົ່າ) | review (ຄົນລິວິວສິນຄ້າ) | course (ຂາຍຄອດ ບໍ່ມີສິນຄ້າ)
 function modeOf(product) {
@@ -537,13 +537,15 @@ function modeOf(product) {
 // ແຖວບອກວ່າຮູບທີ່ແນບອັນໃດແມ່ນ "ຄົນ" (kind: 'clip'=ມີ storyboard sheet ເປັນ Image 1; 'sheet'=ບໍ່ມີ)
 function characterMappingLine(mode, kind) {
   if (mode === 'review') {
-    return kind === 'clip'
-      ? 'PERSON REFERENCE: After the storyboard sheet (Image 1) and the product photo (Image 2), the remaining attached photo(s) are the PERSON. The on-camera presenter MUST match that person exactly — same face, hair, skin tone, build, age and gender. Never generate a different-looking person.'
-      : 'PERSON REFERENCE: Besides the product photo, the remaining attached photo(s) are the PERSON. Every on-camera presenter MUST match that person exactly — same face, hair, skin tone, build, age and gender.';
+    const order = kind === 'clip'
+      ? 'After the storyboard sheet (Image 1) and product photo (Image 2), the remaining attached photo(s) are the presenter identity reference.'
+      : 'Besides the product photo, the attached person photo(s) are the presenter identity reference.';
+    return `PERSON REFERENCE: ${order} Apply this reference ONLY to shots whose assigned speaker role is presenter. The presenter must match exactly in those shots. In customer-role shots, use the distinct customer identified by role and Character ID in the accepted storyboard/continuity card; do not use, substitute, or merge the presenter into the customer.`;
   }
-  return kind === 'clip'
-    ? 'PERSON REFERENCE: After the storyboard sheet (Image 1), ALL remaining attached photo(s) are the PERSON. The on-camera presenter MUST match that person exactly — same face, hair, skin tone, build, age and gender. Never generate a different-looking person.'
-    : 'PERSON REFERENCE: ALL attached photo(s) are the PERSON. Every on-camera presenter MUST match that person exactly — same face, hair, skin tone, build, age and gender.';
+  const order = kind === 'clip'
+    ? 'After the storyboard sheet (Image 1), the remaining attached photo(s) are the instructor identity reference.'
+    : 'The attached person photo(s) are the instructor identity reference.';
+  return `PERSON REFERENCE: ${order} All course shots belong to the single instructor/presenter role; match this same person in every shot. There is no separate customer role in course mode.`;
 }
 
 // ບລັອກ override ບ່ອນເທິງສຸດ — priority ສູງສຸດ, ແກ້ semantic ຂອງໂໝດ (ວ່າງສຳລັບ product)
@@ -555,9 +557,10 @@ function buildModeOverride(mode, kind, product = {}) {
     : '';
   if (mode === 'review') {
     return `*** MODE: PERSON REVIEWS PRODUCT — HIGHEST PRIORITY, READ FIRST ***
-This commercial shows a real PERSON reviewing and recommending the product. Two identities must BOTH stay locked:
-1) THE PRODUCT — exactly as in the attached product photo (every product rule below still applies in full).
-2) THE PERSON — exactly as in the attached person photo(s): the on-camera presenter is that same human in every shot.
+This commercial shows a real PERSON reviewing and recommending the product. The presenter and customer are separate roles and must not be merged:
+1) THE PRESENTER — in presenter-role shots only, match the attached person photo(s) exactly.
+2) THE CUSTOMER — in customer-role shots, use the distinct customer identity and appearance assigned in the accepted storyboard/continuity card; do not substitute the presenter.
+3) THE PRODUCT — exactly as in the attached product photo (every product rule below still applies in full).
 ${characterMappingLine(mode, kind)}
 SHOT 12 OVERRIDE: Shot 12 is NOT a product-only hero. Shot 12 shows the SAME person holding the product toward camera and speaking the exact Shot 12 Lao line on camera with lip-sync. The person and the product are both clearly visible; the product stays identical to the attached product photo.
 ${personDesc}
@@ -665,9 +668,88 @@ function sceneForFlowVideo(scene, product = {}) {
   return visual;
 }
 
+function courseFaceDescription(value) {
+  return String(value || '').split('\n')
+    .map(line => line
+      .replace(/\bClothing\s*:\s*.*$/i, '')
+      .replace(/\bWardrobe\s*:\s*.*$/i, '')
+      .trim())
+    .filter(line => line && !/^(?:Accessories|IDENTITY CHECK)\s*:/i.test(line))
+    .join('\n');
+}
+
+const COURSE_VIDEO_LOCKS = {
+  identity: 'COURSE PRESENTER IDENTITY LOCK: The attached person reference photo(s), plus the face-only description below, are the sole authority for the instructor\'s face and identity. Keep the same face, facial features, skin tone, apparent age, hair and gender across all shots and all three clips. Do not copy, infer or preserve clothing from the person reference photo(s).',
+  wardrobe: 'STORYBOARD WARDROBE LOCK: The matching panel on Image 1 is the sole authority for what the instructor wears in that shot. Reproduce the clothing shown or described in the storyboard, including its colors, style and fit. The outfit may change between shots only when the storyboard shows or describes that change. Ignore clothing visible in the attached person reference photo(s) and any clothing details in the face description.',
+  references: 'REFERENCE MAPPING: Image 1 is the storyboard sheet. For each numbered shot below, use only its matching panel for scene, location, action, framing, camera composition and wardrobe. Images 2 and onward are person reference photo(s); use them only to match the instructor\'s face and identity. No image is a product reference. There is no physical product.',
+  cleanFrame: 'CLEAN FRAME: Output only the filmed scene. Never show or recreate the storyboard sheet, panels, borders, labels, diagrams or paper. No generated captions, subtitles, titles, labels, names, numbers, UI or watermarks. Keep the instructor and active speaking face sharply focused with natural detail; no soft focus, defocus, haze, ghosting, double exposure, motion trails, pixelation or compression artifacts. Lao dialogue is spoken audio only.',
+};
+
+function buildCourseFlowClipPrompt(clipNo, shots4, product) {
+  const start = (clipNo - 1) * 4 + 1;
+  const faceDescription = courseFaceDescription(product.personLook);
+  const narration = shots4.map(s => {
+    const long = countLaoSyllables(s.text) > Math.round((Number(s.seconds) || 2.5) * 4);
+    const pace = long
+      ? 'Begin speaking at the start of the shot; speak briskly and clearly so the complete exact line ends before the cut.'
+      : 'Speak naturally and clearly within this shot.';
+    return 'Shot ' + s.shot + ': ' + s.text + ' — [Visible instructor: on-camera lip-sync | Duration: '
+      + s.seconds + 's | ' + pace + ']';
+  }).join('\n');
+  const shotDetails = shots4.map(s => {
+    const beat = DEFAULT_SPEAKERS[s.shot - 1]?.beat || '';
+    return 'SHOT ' + s.shot + ' (' + s.seconds + 's, ' + s.role + (beat ? ', beat=' + beat : '') + '):\n'
+      + (s.scene ? 'STORYBOARD SCENE DIRECTION: ' + s.scene + '\n' : '')
+      + COURSE_VIDEO_LOCKS.references + '\n'
+      + COURSE_VIDEO_LOCKS.wardrobe + '\n'
+      + 'The instructor is the same person from the face references. Keep the instructor visible and speaking this shot\'s exact Lao line on camera with synchronized lip movement.';
+  }).join('\n\n');
+
+  return [
+    'JOD FLOW — COURSE CLIP ' + clipNo + ' OF 3 (Shots ' + start + '-' + (start + 3) + ', vertical 9:16, about 10 seconds)',
+    '',
+    '*** COURSE MODE — SEPARATE VIDEO PROMPT ***',
+    'This is an advertisement for a course/service. There is no physical product. Do not show a product, package, box, bottle, label or product hero.',
+    '',
+    'SOURCE PRIORITY — KEEP THE TWO SOURCES SEPARATE:',
+    '1. FACE / IDENTITY: images 2 onward are the instructor\'s identity reference. Match the face to those photos. Do not take wardrobe from those photos.',
+    '2. WARDROBE / SCENE: Image 1 is the storyboard sheet. For each shot, follow its matching storyboard panel for the scene and the instructor\'s clothing. The storyboard clothing takes priority over clothing in the person photos and face description.',
+    '3. AUDIO: use only the exact assigned Lao dialogue below, spoken by the visible instructor. Do not add, omit, paraphrase or move dialogue.',
+    '',
+    COURSE_VIDEO_LOCKS.identity,
+    COURSE_VIDEO_LOCKS.wardrobe,
+    faceDescription ? 'FACE-ONLY CHARACTER DESCRIPTION (identity guidance; contains no wardrobe directions):\n' + faceDescription : '',
+    FLOW_LOCKS.characterLocation,
+    FLOW_LOCKS.actionStoryboard,
+    FLOW_LOCKS.outputFormat,
+    COURSE_VIDEO_LOCKS.cleanFrame,
+    FLOW_LOCKS.audioPacing,
+    FLOW_LOCKS.storyBeat,
+    FLOW_LOCKS.antiMontage,
+    '',
+    'SHOT DIRECTIONS:',
+    shotDetails,
+    '',
+    'EXACT SPOKEN LAO DIALOGUE — AUDIO ONLY:',
+    narration,
+    '',
+    'FINAL CHECK:',
+    '- Match the presenter\'s face to the attached person reference photo(s).',
+    '- Match each shot\'s outfit to that shot\'s storyboard panel; ignore the clothes in the person reference photos.',
+    '- Show no product and no generated on-screen writing.',
+    '- Return one separate full-frame vertical video for this clip.',
+  ].filter(Boolean).join('\n');
+}
+
+const FLOW_SPEAKER_ROLE_LOCK = `*** EXACT SPEAKER-TO-CHARACTER LOCK — HIGHEST PRIORITY FOR AUDIO ***
+ROLE OWNERSHIP: In each numbered shot, the role printed beside that Shot is the ONLY person who may speak that Shot's exact Lao dialogue. presenter means the recurring presenter character in the continuity card; customer means the separate recurring customer character in the continuity card/storyboard. Match the role to its same Character ID and appearance in every clip. Never merge, swap, or substitute these identities.
+ONE LINE, ONE SPEAKER: At each shot boundary, only that shot's assigned speaker delivers only that shot's exact line. Any other visible person is a silent listener: mouth closed, no lip movement, no vocalization, no overlapping speech. No narrator, dubbing by another character, or dialogue carried across a cut. Keep the assigned speaker's face and mouth visible while the line is spoken and synchronize only that person's lips.
+The storyboard supplies visual identity and action; the explicit per-shot speaker assignment and exact dialogue list below control who speaks. If sources appear to conflict, obey the per-shot role and keep the other character silent.`;
+
 function buildFlowClipPrompt(clipNo, shots4, product, continuity) {
   const start = (clipNo - 1) * 4 + 1;
   const mode = modeOf(product);
+  if (mode === 'course') return buildCourseFlowClipPrompt(clipNo, shots4, product);
   const modeOverride = buildModeOverride(mode, 'clip', product);
   const card = continuityForFlow(continuity);
   const isLongLine = s => countLaoSyllables(s.text) > Math.round((Number(s.seconds) || 2.5) * 4);
@@ -680,15 +762,15 @@ function buildFlowClipPrompt(clipNo, shots4, product, continuity) {
       const treat = mode === 'review' ? 'on-camera lip-sync, person holding the product' : 'on-camera lip-sync CTA to camera, no product';
       return `Shot 12: ${s.text} — [Visible speaker: on-camera presenter matching the person reference | Duration: ${s.seconds}s | Treatment: ${treat} | ${paceDirection(s)}]`;
     }
-    return `Shot ${s.shot}: ${s.text} — [Visible speaker: ${s.role} | Duration: ${s.seconds}s | Treatment: on-camera lip-sync | ${paceDirection(s)}]`;
+    return `Shot ${s.shot}: ${s.text} — [ONLY speaker: ${s.role} character from the continuity card | Duration: ${s.seconds}s | Treatment: that character only, on-camera lip-sync; every other visible person is silent with mouth closed | ${paceDirection(s)}]`;
   }).join('\n');
   const refMapFor = (s) => {
     if (mode === 'course') return `REFERENCE MAPPING: Image 1 supplies only the scene, location, action and camera composition for Shot ${s.shot}. The attached person photo(s) are the sole source for the presenter's identity. There is no product. Output one full-frame live-action shot and never reveal the storyboard page, grid or border.`;
-    if (mode === 'review') return `REFERENCE MAPPING: Image 1 supplies only the location, action and camera composition for Shot ${s.shot}. Image 2 is the sole product source. The attached person photo(s) are the sole source for the presenter's face and identity. Ignore every product-like drawing in Image 1. Output one full-frame live-action shot and never reveal the storyboard page, grid or border. All attached images must be visibly accepted in this request.`;
+    if (mode === 'review') return `REFERENCE MAPPING: Image 1 supplies the location, action, and the distinct character identities for Shot ${s.shot}; preserve the storyboard's presenter/customer separation. Image 2 is the sole product source. The attached person photo(s) identify ONLY the presenter in presenter-role shots. In customer-role shots use the customer identity from Image 1 and the continuity card, never the presenter reference. Ignore product-like drawings in Image 1. Output one full-frame live-action shot and never reveal the storyboard page, grid or border. All attached images must be visibly accepted in this request.`;
     return `REFERENCE MAPPING: Image 1 supplies only the people, location, action and camera composition for Shot ${s.shot}. Image 2 is the sole product source. Ignore every product-like drawing or diagram in Image 1. Output one full-frame live-action shot and never reveal the storyboard page, grid or border. Both images must be visibly attached and accepted in this request.`;
   };
   const audioFor = (s) => {
-    if (s.shot !== 12) return `the visible ${s.role} character speaks only the exact dialogue assigned to Shot ${s.shot} below; show the character’s face/mouth during the line and synchronize lip movement. No voice-over or narrator. Use the corresponding storyboard panel only as scene guidance; output one full-frame live-action shot.`;
+    if (s.shot !== 12) return `ONLY the recurring ${s.role} character identified by the same role/Character ID in the continuity card speaks the exact Shot ${s.shot} line; show that character's face/mouth and synchronize only that character's lips. Every other person is a silent listener with mouth closed. No voice-over, narrator, overlap, or line transfer. Use the corresponding storyboard panel for appearance/action; render one full-frame live-action shot.`;
     if (mode === 'product') return 'Speak the exact Shot 12 Lao line as a clean off-screen brand voice CTA. Keep the image product-only with zero humans, hands or mouths. Animate only the accepted source-pixel product image with a slow linear push-in.';
     if (mode === 'review') return 'The same person from the attached person photo(s) holds the product toward camera and speaks the exact Shot 12 Lao line on camera with synchronized lip movement. Both the person and the exact attached product are clearly visible. No off-screen narrator.';
     return 'The same person from the attached person photo(s) faces camera and speaks the exact Shot 12 Lao line as an on-camera CTA with synchronized lip movement. No product appears. No off-screen narrator.';
@@ -696,7 +778,7 @@ function buildFlowClipPrompt(clipNo, shots4, product, continuity) {
   const shotDesc = shots4.map(s => {
     const beat = DEFAULT_SPEAKERS[s.shot - 1]?.beat || '';
     const sceneNote = s.scene ? `\nVISUAL DIRECTION: ${sceneForFlowVideo(s.scene, product)}` : '';
-    return `Shot ${s.shot} (${s.seconds}s, ${s.role}, beat=${beat}):${sceneNote}\n${productVisibilityNote(s.shot, s.scene, product)}\n${refMapFor(s)}\nAudio: ${audioFor(s)}`;
+    return `Shot ${s.shot} (${s.seconds}s, ONLY SPEAKER ROLE=${s.role}, beat=${beat}):${sceneNote}\n${productVisibilityNote(s.shot, s.scene, product)}\n${refMapFor(s)}\nAudio: ${audioFor(s)}`;
   }).join('\n');
   return `JOD FLOW — CLIP ${clipNo} OF 3 (Shots ${start}-${start + 3}, 9:16, ~10s total)
 
@@ -706,6 +788,8 @@ FRAME-ZERO RULE: Start directly on the filmed scene at 00:00:00. The FIRST decod
 Show exactly ONE live-action scene filling the entire vertical 9:16 canvas edge to edge at a time. ABSOLUTELY FORBIDDEN: inset images, collage, split screen, stacked panels, frames, borders, bars, cards, picture-in-picture, grids, contact sheets, empty margins or any visible storyboard layout.
 ABSOLUTELY NO GENERATED ON-SCREEN WRITING in any language: no Lao subtitles, captions, dialogue, titles, labels, text boxes, names, numbers, UI or watermarks. Lao dialogue is SPOKEN AUDIO ONLY. The sole text exception is existing writing physically printed on the actual product package when that same package appears naturally in the scene; preserve it exactly as photographed. Abstract motion graphics are allowed only when they contain no letters or numbers.
 If a proposed frame contains a storyboard element, border or generated writing, REMOVE that element and render only the clean full-screen scene. Never deliver a frame that violates this rule.
+
+${FLOW_SPEAKER_ROLE_LOCK}
 
 ${PRODUCT_IDENTITY_LOCK}
 
@@ -741,13 +825,13 @@ PRODUCT: ${product.name}
 SHOT BREAKDOWN:
 ${shotDesc}
 
-SPOKEN LAO DIALOGUE — AUDIO ONLY, NEVER WRITTEN ON SCREEN (sole source of spoken Lao for every Shot 1-12; Shot 12 uses off-screen brand voice CTA). These lines are heard, never seen; do not subtitle, caption or display them:
+SPOKEN LAO DIALOGUE — AUDIO ONLY, NEVER WRITTEN ON SCREEN (sole source of spoken Lao for every Shot 1-12; Shot 12 follows the mode-specific speaker instruction above). These lines are heard, never seen; do not subtitle, caption or display them:
 ${narration}
 
 PRODUCT PACKAGE RULE — the clip is unusable if broken:
 Use the attached product photograph as the only package source. The package is a fixed photographic object. Preserve the exact photographed pixels and artwork in every occurrence. The text description above is QA metadata only and must never be used to redesign or redraw the package. If the engine cannot preserve the exact package, leave the package out of the generated frame and report PRODUCT FIDELITY NOT VERIFIED. Never substitute a lookalike, generic carton, altered logo, invented lettering or redesigned label.
 
-SPOKEN AUDIO RULE: For Shots 1-11, the visible assigned character speaks ONLY the exact Lao dialogue before the em dash with synchronized lip movement. Shot 12 is the only exception: speak its exact line as an off-screen brand voice while the visual remains product-only with zero people. Ignore bracketed metadata and never render it. All other text is instruction only.
+SPOKEN AUDIO RULE: For every Shot 1-11, only the character identified by that shot's role and matching continuity Character ID speaks the exact Lao line before the em dash with synchronized lip movement; all other visible people stay silent with mouths closed. Never swap or transfer a line. Shot 12 follows the mode-specific CTA instruction above (product mode: off-screen brand voice; review mode: presenter on camera; course mode: instructor on camera). Ignore bracketed metadata and never render it. All other text is instruction only.
 
 FINAL CHECK BEFORE RENDERING — confirm all of these:
 - EVERY frame, including transitions, is one borderless full-screen 9:16 scene; the storyboard sheet, its panels and all generated writing are ABSENT. If not, do not render that frame.
@@ -784,10 +868,10 @@ function buildFlowStoryboardPrompt(sheetNo, shots4, product, continuity) {
     } else if (mode === 'review') {
       // ຄົນລິວິວ: ສິນຄ້າຄືເກົ່າ ແຕ່ Shot 12 = ຄົນຖືສິນຄ້າ ແລະ ຄົນຕ້ອງໜ້າຄືຮູບ
       rule = s.shot === 12
-        ? 'PERSON + PRODUCT HERO — the same person from the attached person photo(s) holds the attached product toward camera, premium background. Both the person and the product are clearly visible; product matched 1:1 to the attached product photo. The presenter face must match the attached person photo(s).'
+        ? 'PERSON + PRODUCT HERO — the presenter-role character from the attached person photo(s) holds the attached product toward camera, premium background. Both presenter and product are clearly visible; product matched 1:1 to its photo. The presenter face matches the reference; do not merge or substitute the customer.'
         : (sceneRequiresProduct
-          ? 'PRODUCT AS A SMALL IN-SCENE PROP: the people, location and action remain the dominant composition. Keep the actual attached product naturally in a hand or on a scene surface, below 20 percent of the band area. The person and story action occupy most of the band. This band is not a packshot, beauty shot, catalogue photo or isolated product composition. The presenter face must match the attached person photo(s).'
-          : 'PRODUCT ABSENT: this story beat contains people/location/action only. Treat the attached product photo as identity reference for other bands; do not place a box, bottle, package, label, logo or product substitute in this band. The presenter face must match the attached person photo(s).');
+          ? 'PRODUCT AS A SMALL IN-SCENE PROP: the people, location and action remain the dominant composition. Keep the actual attached product naturally in a hand or on a scene surface, below 20 percent of the band area. The person and story action occupy most of the band. This band is not a packshot, beauty shot, catalogue photo or isolated product composition. If the presenter appears, match the presenter reference; if the customer is the assigned speaker, preserve the distinct customer identity from the scene/continuity card.'
+          : 'PRODUCT ABSENT: this story beat contains people/location/action only. Treat the attached product photo as identity reference for other bands; do not place a box, bottle, package, label, logo or product substitute in this band. If the presenter appears, match the presenter reference; preserve the distinct customer identity when customer is the assigned speaker.');
     } else {
       rule = s.shot === 12
         ? 'PRODUCT ONLY — ZERO humans, zero hands, zero body parts. Static macro hero of the packaging, matched 1:1 to the attached reference photo, dark premium background, slow linear push-in framing.'
@@ -796,7 +880,8 @@ function buildFlowStoryboardPrompt(sheetNo, shots4, product, continuity) {
           : 'PRODUCT ABSENT: this story beat contains people/location/action only. Treat the attached product photo as identity reference for other bands; do not place a box, bottle, package, label, logo or product substitute in this band.';
     }
     return `[instruction ${i + 1} of 4 — the ${range[i]} strip]
-Shot ${s.shot} (${s.role}, beat=${beat})
+Shot ${s.shot} (ONLY SPEAKER ROLE=${s.role}, beat=${beat})
+The speaking character must be the recurring Character ID assigned this role in the continuity card; keep presenter and customer visually separate. Show the assigned speaker in the scene; any other visible person is only a silent listener. Do not render these instructions as text.
 VISUAL DIRECTION: ${s.scene || '(follow the beat above)'}
 ${rule}
 Must look clearly different from strips ${others}.`;

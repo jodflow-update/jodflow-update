@@ -1,19 +1,19 @@
 {
-  "rev": 5,
-  "notes": "ແກ້ Flow project ເກົ່າຄ້າງ/ເລືອກ tab ຜິດ + Gemini API (ແຕ່ລະເຄື່ອງໃສ່ key ເອງ) + ໂໝດ API/ເວັບ + ແຖບຄືບໜ້າ",
-  "at": "2026-11-07T02:07:59.575Z",
+  "rev": 6,
+  "notes": "JOD FLOW release 6 — current approved application files",
+  "at": "2026-11-10T10:07:51.216Z",
   "files": {
     "server.js": {
-      "sha256": "c3fa101153c48279f41a6a2a6ff09ecd53caeffe53b393170e18051168277034",
-      "bytes": 112600
+      "sha256": "bc48d69f7d1eb287c3d1fc153be68326b66c3306c897c7ab92df6ae64276030f",
+      "bytes": 122552
     },
     "worker.js": {
-      "sha256": "17245efe448e711b654dd2da4a1868ef321a36fca5a4e705859caa6d62f01956",
-      "bytes": 181945
+      "sha256": "4a15a71b11a8ffa255ac868ff854be042b568057e6b4f9407bb33aeeb925fcb8",
+      "bytes": 190668
     },
     "skill.js": {
-      "sha256": "f4d3ea99d9aa5d2008b0ae4bde14a24604ba443baf01d12090c1bc97b3143658",
-      "bytes": 106652
+      "sha256": "e6cfd123ffbefd4e184cebcdb18029ca70d3216326a2cea26ad1e24c8789e068",
+      "bytes": 115714
     },
     "hero.js": {
       "sha256": "fe2eaf7b08bdd10f38e8394c54ceb0165f7e3b38b61a5bf00696bb93608c5446",
@@ -24,16 +24,16 @@
       "bytes": 2159
     },
     "ui.html": {
-      "sha256": "14ca3d751fbed0ff8bc8aa1912d640faee8a860008c68e73e62a7edf864cfc9a",
-      "bytes": 112228
+      "sha256": "09750c4162ff066459e41789ae1cb9f6118802bd7901a75c12be84eb2dcd8eac",
+      "bytes": 114066
     },
     "selectors.json": {
       "sha256": "0238f145398f22a1e66e8f47fb65d1632dd0fad6a9d42c9b7142fe4e915234d4",
       "bytes": 6006
     },
     "gemini-api.js": {
-      "sha256": "d5795bbeb0fff3d34c9858e54402648797540e1f08bc3400469c2b360c797afe",
-      "bytes": 5095
+      "sha256": "42c3c41b6e212da0c5d808a103594ec1475ccd5fdba2023c54a85aac60fa73c8",
+      "bytes": 6108
     }
   }
 }
