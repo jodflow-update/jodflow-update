@@ -1,5 +1,5 @@
 // JOD FLOW — HTTP server + state machine (ພາສາລາວ)
-const http = require('http'), fs = require('fs'), path = require('path');
+const http = require('http'), fs = require('fs'), path = require('path'), os = require('os');
 const { spawn } = require('child_process');
 const { atomicWriteJson, openExternal, samePath, terminateProcessTree } = require('./platform.js');
 const skill = require('./skill');
@@ -24,6 +24,37 @@ const CFG = JSON.parse(fs.readFileSync(path.join(APP, 'config.json'), 'utf8'));
 let PORT = Number(process.env.JODFLOW_PORT || CFG.httpPort || 3838);
 const INITIAL_PORT = PORT;
 fs.mkdirSync(DATA, { recursive: true });
+
+// Kept in this updateable file so an auto-update never depends on a new file
+// that an older client is not allowed to download.
+function runtimeDiagnostics() {
+  const probe = dir => {
+    const file = path.join(dir, `.jodflow-ready-${process.pid}-${Date.now()}`);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(file, 'ok', { flag: 'wx' });
+      fs.unlinkSync(file);
+      return { ok: true, detail: 'write ready' };
+    } catch (error) {
+      try { fs.unlinkSync(file); } catch { /* no residue when probing fails */ }
+      return { ok: false, detail: error && error.code ? error.code : 'write failed' };
+    }
+  };
+  const check = (id, label, ok, detail) => ({ id, label, ok: !!ok, detail: detail || '' });
+  const downloads = require('./platform.js').downloadsDir();
+  const browser = require('./platform.js').findAutomationBrowser();
+  const required = ['boot.js', 'app/server.js', 'app/worker.js', 'app/platform.js', 'app/ui.html', 'app/selectors.json', 'app/node_modules/playwright-core/index.js'];
+  const missing = required.filter(rel => !fs.existsSync(path.join(APP, '..', rel)));
+  const dataWrite = probe(DATA), downloadsWrite = probe(downloads);
+  const checks = [
+    check('node', 'Node.js 18+', Number(String(process.versions.node || '0').split('.')[0]) >= 18, `v${process.versions.node}`),
+    check('runtime-files', 'ໄຟລ໌ຫຼັກຂອງບັອດ', missing.length === 0, missing.length ? `missing: ${missing.join(', ')}` : 'ready'),
+    check('data-folder', 'ບ່ອນເກັບຂໍ້ມູນ JOD FLOW', dataWrite.ok, dataWrite.detail),
+    check('downloads-folder', 'ບ່ອນດາວໂຫຼດ', downloadsWrite.ok, downloadsWrite.detail),
+    check('browser', 'Chrome ຫຼື Microsoft Edge', !!browser, browser ? browser.name : 'not found'),
+  ];
+  return { ok: checks.every(item => item.ok), generatedAt: new Date().toISOString(), platform: { name: os.platform(), release: os.release(), arch: os.arch() }, browser: browser ? { name: browser.name } : null, checks };
+}
 
 // ---------- ຕົວອັບເດດອັດຕະໂນມັດ (ເພີ່ມເຂົ້າ, ບໍ່ແຕະ logic ເກົ່າ) ----------
 // ຖ້າບໍ່ມີ update-public.pem ຫຼື updateUrl → updater ປິດຕົວເອງ (enabled=false) ບໍ່ເຮັດຫຍັງ
@@ -991,6 +1022,12 @@ const server = http.createServer(async (req, res) => {
       catch { return send(res, 200, { products: [], audiences: [] }); }
     }
     if (req.method === 'GET' && p === '/api/health') return send(res, 200, { ok: true, version: VERSION, capabilities: CAPABILITIES, appPath: APP });
+    // Safe, local-only readiness check for another Mac/Windows PC.  It does
+    // not start the browser or disturb an in-progress Flow job.
+    if (req.method === 'GET' && p === '/api/diagnostics') return send(res, 200, {
+      ...runtimeDiagnostics(),
+      busy: isBusy(),
+    });
     if (req.method === 'GET' && p === '/api/state') return send(res, 200, publicState());
     if (req.method === 'GET' && p === '/api/timings') return send(res, 200, {
       ...job.timings,

@@ -221,6 +221,7 @@ button.is-busy::after{content:"";position:absolute;inset:0;margin:auto;width:17p
             <button id="resumeWorkflowBtn" onclick="resumeWorkflow(this)">ກວດ ແລະ ສືບຕໍ່ວຽກ</button>
             <div class="sep"></div>
             <small>ລະບົບ</small>
+            <button id="diagnoseBtn" onclick="runDiagnostics(this)">ກວດຄວາມພ້ອມເຄື່ອງ</button>
             <button id="checkUpdateBtn" onclick="checkUpdate()">ກວດອັບເດດ</button>
             <button class="danger" onclick="resetAll()">ຣີເຊັດທັງໝົດ</button>
           </div>
@@ -237,6 +238,7 @@ button.is-busy::after{content:"";position:absolute;inset:0;margin:auto;width:17p
           <h1>ພາບລວມຊຸດວິດີໂອ</h1>
           <p id="msg" class="status-message"></p>
           <div id="err"></div>
+          <p id="diagnosticStatus" class="status-message" aria-live="polite"></p>
         </div>
         <button class="primary-button" data-go="create">+ ໄປໜ້າສ້າງວິດີໂອ</button>
       </div>
@@ -1317,6 +1319,38 @@ async function runAction(btn, path, body) {
   return withBusy(btn, async () => {
     try { const r = await api(path, body); pull(); return r; }
     catch (e) { toast('ຜິດພາດ: ' + (e && e.message || e), 'err'); }
+  });
+}
+
+// Check the local computer only.  It never opens Flow or changes the current
+// project, so it is safe to run while reviewing a job.
+async function runDiagnostics(btn) {
+  el('toolMenu')?.classList.remove('open');
+  await withBusy(btn, async () => {
+    const target = el('diagnosticStatus');
+    try {
+      if (target) target.textContent = 'ກຳລັງກວດຄວາມພ້ອມຂອງເຄື່ອງ...';
+      const r = await fetch('/api/diagnostics', { cache: 'no-store' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      const failed = (d.checks || []).filter(item => !item.ok);
+      if (failed.length) {
+        const text = failed.map(item => `${item.label}: ${item.detail || 'ບໍ່ພ້ອມ'}`).join(' | ');
+        if (target) target.textContent = `ພົບ ${failed.length} ບັນຫາ: ${text}`;
+        toast('ເຄື່ອງຍັງບໍ່ພ້ອມ — ' + text, 'err', 7200);
+        return;
+      }
+      const browser = d.browser?.name || 'Chromium browser';
+      const text = `ເຄື່ອງພ້ອມ: Node, ໄຟລ໌ບັອດ, ບ່ອນເກັບຂໍ້ມູນ, Downloads ແລະ ${browser}`;
+      if (target) target.textContent = text;
+      el('sysState').textContent = 'ລະບົບພ້ອມ';
+      el('sysSub').textContent = browser;
+      toast(text, 'ok');
+    } catch (e) {
+      const text = 'ກວດຄວາມພ້ອມບໍ່ໄດ້: ' + (e && e.message || e);
+      if (target) target.textContent = text;
+      toast(text, 'err');
+    }
   });
 }
 

@@ -1,11 +1,11 @@
 {
-  "rev": 6,
-  "notes": "JOD FLOW release 6 — current approved application files",
-  "at": "2026-11-10T10:07:51.216Z",
+  "rev": 7,
+  "notes": "เพิ่มระบบตรวจความพร้อมเครื่อง: ตรวจ Node ไฟล์หลัก Data Downloads และ Chrome/Edge ก่อนใช้งาน",
+  "at": "2026-11-10T10:50:08.362Z",
   "files": {
     "server.js": {
-      "sha256": "bc48d69f7d1eb287c3d1fc153be68326b66c3306c897c7ab92df6ae64276030f",
-      "bytes": 122552
+      "sha256": "029223ed7fb583bbf8f431003d10f945ce950bfbd561f2fe129a99a6cd3267e9",
+      "bytes": 124916
     },
     "worker.js": {
       "sha256": "4a15a71b11a8ffa255ac868ff854be042b568057e6b4f9407bb33aeeb925fcb8",
@@ -24,8 +24,8 @@
       "bytes": 2159
     },
     "ui.html": {
-      "sha256": "09750c4162ff066459e41789ae1cb9f6118802bd7901a75c12be84eb2dcd8eac",
-      "bytes": 114066
+      "sha256": "73634d88a9f0d0f5eb25d25e6246e0a061f42c6b46da8326af7ea5a0969317a7",
+      "bytes": 115891
     },
     "selectors.json": {
       "sha256": "0238f145398f22a1e66e8f47fb65d1632dd0fad6a9d42c9b7142fe4e915234d4",
