@@ -1,19 +1,19 @@
 {
-  "rev": 7,
-  "notes": "เพิ่มระบบตรวจความพร้อมเครื่อง: ตรวจ Node ไฟล์หลัก Data Downloads และ Chrome/Edge ก่อนใช้งาน",
-  "at": "2026-11-10T10:50:08.362Z",
+  "rev": 8,
+  "notes": "Wardrobe continuity lock: lock the exact outfit from the Continuity Card across storyboard and video; prevent outfit changes being used for visual variation.",
+  "at": "2026-11-11T15:24:00.950Z",
   "files": {
     "server.js": {
-      "sha256": "029223ed7fb583bbf8f431003d10f945ce950bfbd561f2fe129a99a6cd3267e9",
-      "bytes": 124916
+      "sha256": "3c424ae318ebf8b9e4a6756c0e30167e8a834386a2ec76d91168d189985a0f89",
+      "bytes": 125668
     },
     "worker.js": {
       "sha256": "4a15a71b11a8ffa255ac868ff854be042b568057e6b4f9407bb33aeeb925fcb8",
       "bytes": 190668
     },
     "skill.js": {
-      "sha256": "e6cfd123ffbefd4e184cebcdb18029ca70d3216326a2cea26ad1e24c8789e068",
-      "bytes": 115714
+      "sha256": "9adcb995c9443ced0f7c97b38a5c6f7b73e6cac41c1c5a34d4a21cf33914b766",
+      "bytes": 117867
     },
     "hero.js": {
       "sha256": "fe2eaf7b08bdd10f38e8394c54ceb0165f7e3b38b61a5bf00696bb93608c5446",

@@ -368,6 +368,9 @@ function continuityIssues(continuity) {
   const characterLines = text.split('\n').filter(line => /^Character\s+C\d{2}\s*:/i.test(line));
   for (const line of characterLines) {
     if (line.length < 90) issues.push(`${line.match(/Character\s+C\d{2}/i)?.[0] || 'Character'} ລາຍລະອຽດສັ້ນເກີນໄປ`);
+    if (!/\bwardrobe\b|\bclothing\b|\boutfit\b/i.test(line)) {
+      issues.push(`${line.match(/Character\s+C\d{2}/i)?.[0] || 'Character'} ຂາດ wardrobe ທີ່ລັອກຕາຍຕົວ`);
+    }
   }
   const locationLines = text.split('\n').filter(line => /^Location\s+L\d{2}\s*:/i.test(line));
   for (const line of locationLines) {
@@ -504,6 +507,7 @@ const FLOW_LOCKS = {
   audioPacing: 'ON-CAMERA DIALOGUE PACING LOCK: Natural, clear Lao dialogue by the visible speaker with synchronized lip movement. Fit the complete exact line within its configured shot duration. For a longer line, begin speaking at the very start of that shot, remove unnecessary pauses, and speak briskly only as much as needed to finish before the cut. Keep every word intelligible and the lip movement synchronized. Never omit, shorten, paraphrase, overlap, or move words to another shot. Do not change shot duration or speed up the video itself. No announcer-style voice-over.',
   storyBeat: 'STORY BEAT LOCK: Preserve the ordered beats, named roles, requested locations, actions, transitions, and ending exactly. Do not merge, replace, reorder, or omit a required beat.',
   continuity: 'CONTINUITY LOCK: The CAST & WORLD card below is fixed for all 3 sheets and all 3 clips of this commercial. Every person, outfit, hairstyle, location, time of day, lighting direction, vehicle and colour palette must match that card exactly in every single band and every single shot. Never restyle, re-cast, relocate, or re-light a shot because its own description is short — fall back to the card. The whole commercial is ONE continuous story shot on ONE day with ONE cast. Respect LocationSource: NEUTRAL_UNNAMED means zero named or recognizable geography and zero invented landmarks in every output.',
+  wardrobe: 'WARDROBE LOCK — HIGHEST VISUAL CONTINUITY PRIORITY: The wardrobe written for each Character ID in the CAST & WORLD card is immutable. The same character wears the exact same complete outfit, colours, layers, shoes and accessories in every band and every shot. A scene direction, storyboard panel, person reference, camera angle or request for a visually different moment may NEVER change, add, remove, replace or restyle any clothing. Visual variety may come only from camera angle, shot size, blocking, pose, facial expression, action and composition. If any source conflicts, the CAST & WORLD card wardrobe wins.',
   speakerShare: 'SPEAKER SHARE GUIDANCE ONLY: Presenter/customer share around 70/30 is optional guidance, never a validation gate. Preserve the supplied roles and narration exactly even when the measured share is below 65% or above 75%.',
 };
 
@@ -766,8 +770,8 @@ function buildFlowClipPrompt(clipNo, shots4, product, continuity) {
   }).join('\n');
   const refMapFor = (s) => {
     if (mode === 'course') return `REFERENCE MAPPING: Image 1 supplies only the scene, location, action and camera composition for Shot ${s.shot}. The attached person photo(s) are the sole source for the presenter's identity. There is no product. Output one full-frame live-action shot and never reveal the storyboard page, grid or border.`;
-    if (mode === 'review') return `REFERENCE MAPPING: Image 1 supplies the location, action, and the distinct character identities for Shot ${s.shot}; preserve the storyboard's presenter/customer separation. Image 2 is the sole product source. The attached person photo(s) identify ONLY the presenter in presenter-role shots. In customer-role shots use the customer identity from Image 1 and the continuity card, never the presenter reference. Ignore product-like drawings in Image 1. Output one full-frame live-action shot and never reveal the storyboard page, grid or border. All attached images must be visibly accepted in this request.`;
-    return `REFERENCE MAPPING: Image 1 supplies only the people, location, action and camera composition for Shot ${s.shot}. Image 2 is the sole product source. Ignore every product-like drawing or diagram in Image 1. Output one full-frame live-action shot and never reveal the storyboard page, grid or border. Both images must be visibly attached and accepted in this request.`;
+    if (mode === 'review') return `REFERENCE MAPPING: Image 1 supplies the location, action, camera composition and distinct character identities for Shot ${s.shot}; preserve the storyboard's presenter/customer separation. The CAST & WORLD card, not Image 1, is the sole wardrobe authority: use its exact immutable wardrobe for each Character ID even if a storyboard panel conflicts. Image 2 is the sole product source. The attached person photo(s) identify ONLY the presenter in presenter-role shots. In customer-role shots use the customer identity from Image 1 and the continuity card, never the presenter reference. Ignore product-like drawings in Image 1. Output one full-frame live-action shot and never reveal the storyboard page, grid or border. All attached images must be visibly accepted in this request.`;
+    return `REFERENCE MAPPING: Image 1 supplies only the people, location, action and camera composition for Shot ${s.shot}. The CAST & WORLD card, not Image 1, is the sole wardrobe authority: use its exact immutable wardrobe for each Character ID even if a storyboard panel conflicts. Image 2 is the sole product source. Ignore every product-like drawing or diagram in Image 1. Output one full-frame live-action shot and never reveal the storyboard page, grid or border. Both images must be visibly attached and accepted in this request.`;
   };
   const audioFor = (s) => {
     if (s.shot !== 12) return `ONLY the recurring ${s.role} character identified by the same role/Character ID in the continuity card speaks the exact Shot ${s.shot} line; show that character's face/mouth and synchronize only that character's lips. Every other person is a silent listener with mouth closed. No voice-over, narrator, overlap, or line transfer. Use the corresponding storyboard panel for appearance/action; render one full-frame live-action shot.`;
@@ -806,6 +810,7 @@ GLOBAL LOCKS (apply to this clip):
 - ${FLOW_LOCKS.actionStoryboard}
 - ${FLOW_LOCKS.outputFormat}
 - ${FLOW_LOCKS.continuity}
+- ${FLOW_LOCKS.wardrobe}
 ${card ? `
 === CAST & WORLD CARD — PRIVATE PRODUCTION METADATA (fixed for the whole commercial — clip ${clipNo} must match it exactly; not one word of this card may appear on screen) ===
 ${card}
@@ -842,6 +847,7 @@ FINAL CHECK BEFORE RENDERING — confirm all of these:
 - CROSS-CLIP MATCH: the package in this clip would be indistinguishable from the package in the other two clips of this commercial.
 - SINGLE CLOSED PRODUCT RULE: when required, show exactly one whole closed package copied from Image 2, with no exposed contents and no additional product-form object.
 - STORYBOARD PRODUCT MARKS ARE NOT ASSETS: Image 2 alone decides the product. Ignore all product-like planning marks in Image 1.
+- WARDROBE CONTINUITY: every recurring Character ID wears the exact fixed wardrobe from the CAST & WORLD card. If a storyboard panel conflicts, keep the card wardrobe and preserve only that panel's action/composition.
 `;
 }
 
@@ -884,7 +890,7 @@ Shot ${s.shot} (ONLY SPEAKER ROLE=${s.role}, beat=${beat})
 The speaking character must be the recurring Character ID assigned this role in the continuity card; keep presenter and customer visually separate. Show the assigned speaker in the scene; any other visible person is only a silent listener. Do not render these instructions as text.
 VISUAL DIRECTION: ${s.scene || '(follow the beat above)'}
 ${rule}
-Must look clearly different from strips ${others}.`;
+VISUAL VARIETY ONLY: Make this strip visibly distinct from strips ${others} through camera angle, framing, pose, blocking, action, facial expression or composition. NEVER use a different outfit, added clothing layer, costume, uniform, armor, hairstyle, age, identity, product form, time of day, lighting or location to make a strip different. The continuity-card wardrobe is mandatory.`;
   }).join('\n\n');
 
   const heroBand = shots4.findIndex(s => s.shot === 12) + 1;
@@ -917,6 +923,7 @@ LOCKS:
 - ${FLOW_LOCKS.labelIntegrity}
 - ${FLOW_LOCKS.storyBeat}
 - ${FLOW_LOCKS.continuity}
+- ${FLOW_LOCKS.wardrobe}
 ${card ? `
 === CAST & WORLD CARD — PRIVATE PRODUCTION METADATA (fixed for the whole commercial — sheet ${sheetNo} must match it exactly; not one word of this card may appear on the frame) ===
 ${card}
@@ -936,7 +943,7 @@ HARD RULES — the sheet is rejected if any one is broken:
 0. NOTHING WRITTEN IN THIS BRIEF MAY BE DRAWN INTO THE PICTURE. Words such as "instruction", "strip", "Shot", "beat", "VISUAL DIRECTION", "LOCATION", "Location", "Setting", "Character", "Person", "Props", "Palette", "Lighting", "TimeOfDay", every internal id such as L01, L02, C01 or C02, every role word such as presenter, customer or salesman, every number, every percentage, and every label here are directions to you, not captions to render. Do not print band numbers, percentages, ratios, or position markers anywhere on the frame, including in the margins and corners. The finished picture contains photographed scenes only — zero overlaid words or numbers.
 1. FOUR full-bleed scenes, stacked vertically. There is no outer frame, no film border, no sprocket-hole edge, no gutter and no decorative divider. The scenes touch directly edge-to-edge.
 2. ALL 4 BANDS SHOW DIFFERENT SCENES. Never repeat a scene, never re-crop or re-angle the same moment, never reuse the same character pose across two bands. Four separate moments in the story.
-3. Each band must differ from the other three in at least TWO of: location, which characters appear, camera distance, action taking place.
+3. Each band must differ from the other three through at least TWO of: camera distance, camera angle, character pose, subject blocking, facial expression, or action taking place. Wardrobe, hair, identity, age, location, time of day and lighting are fixed continuity properties and MUST NOT be used to make bands different.
 4. No vertical division appears anywhere in the image, and no scene is ever placed beside another scene. Each scene occupies its own full-width row; all rows share the same height. Scene transitions are direct clean photographic joins, not visible frames, borders, gutters, black bars, white bars or film perforations.
 5. Render each band from ITS OWN VISUAL DIRECTION below. Do not replace a band with a variation of another band's scene, and do not drop a band because its direction seems similar.
 6. No text anywhere on the frame: no titles, band numbers, captions, subtitles, footers, callouts, Lao text, English text, text boxes, speech bubbles, chips, pills, buttons, search icons, phone icons, lower-thirds, nameplates, UI widgets, logos or watermarks. Only writing physically present on the real attached product package may appear, left exactly as photographed.
@@ -951,6 +958,7 @@ ${panels}
 FINAL CHECK BEFORE RENDERING — confirm all of these:
 - Counting from the top: four stacked full-width scenes, all the same height, with no outer border, no inner border, no black/white bars, no film strip and no sprocket holes; no vertical division anywhere.
 - Band 1, band 2, band 3 and band 4 are four DIFFERENT scenes; none is a repeat or a re-crop of another.${heroCheck}
+- Every recurring Character ID wears exactly the immutable wardrobe from the CAST & WORLD card in every band; no costume, armor, uniform, extra layer or clothing change appears in any band.
 - Bands for Shots 1-11 may contain the exact attached product when the written story beat requires it, embedded in natural action and never as an isolated packshot; Shot 12 is the only standalone product hero, with no newly designed substitute.
 - No text has been drawn onto the frame.
 `;

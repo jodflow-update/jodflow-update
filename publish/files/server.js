@@ -105,7 +105,7 @@ function freshJob() {
     autoScriptChatUrl: '',
     script: [], // array of 12 shots
     continuity: '', // ບັດ CAST & WORLD ໃຊ້ຮ່ວມກັນທຸກແຜ່ນ/ທຸກຄລິບ
-    continuityErrs: [], // ຄຳເຕືອນ ID/ລາຍລະອຽດຄົນ-ສະຖານ; additive ບໍ່ບລັອກ job ເກົ່າ
+    continuityErrs: [], // ຄຳເຕືອນ ID/ລາຍລະອຽດຄົນ-ສະຖານ; wardrobe ທີ່ຂາດແມ່ນຂໍ້ຜິດວິກິດກ່ອນສ້າງ Storyboard
     projectUrl: '', // project Flow ທີ່ລັອກໄວ້ ກັນແທັບຍ້າຍເອງ
     scriptErrs: [],
     auto: false, // ໂໝດອັດຕະໂນມັດ: ຮູບຄົບ → ຕໍ່ວິດີໂອເອງ ບໍ່ຕ້ອງລໍຄົນກົດ
@@ -586,6 +586,12 @@ async function stepStoryboard(resumeFrom = 1) {
     job.scriptErrs = skill.validateScript(job.script, job.product);
     job.error = `ສ້າງ Storyboard ບໍ່ໄດ້: ບົດພາກຕ້ອງຄົບ 12/12 — ${requiredDialogueErrors.join('; ')}`;
     setPhase('review-script', 'ກະລຸນາໃສ່ບົດພາກໃຫ້ຄົບທຸກ Shot 1-12');
+    return;
+  }
+  const wardrobeErrors = (job.continuityErrs || []).filter(e => /wardrobe/i.test(e));
+  if (wardrobeErrors.length) {
+    job.error = `ສ້າງ Storyboard ບໍ່ໄດ້: ບັດ CONTINUITY ບໍ່ໄດ້ລັອກຊຸດ — ${wardrobeErrors.join('; ')}`;
+    setPhase('review-script', 'ກະລຸນາລັອກ wardrobe ຂອງຕົວລະຄອນກ່ອນ');
     return;
   }
   setPhase('storyboard', 'ສ້າງ Storyboard 3 ແຜ່ນ (ເທື່ອລະແຜ່ນ) ໃນ Flow...');
@@ -1542,6 +1548,10 @@ const server = http.createServer(async (req, res) => {
         if (requiredDialogueErrors.length) {
           job.scriptErrs = skill.validateScript(job.script, job.product); saveJob();
           return send(res, 200, { ok: false, error: `ບົດພາກຕ້ອງຄົບ 12/12 — ${requiredDialogueErrors.join('; ')}` });
+        }
+        const wardrobeErrors = (job.continuityErrs || []).filter(e => /wardrobe/i.test(e));
+        if (wardrobeErrors.length) {
+          return send(res, 200, { ok: false, error: `ລັອກຊຸດໃນ CONTINUITY ບໍ່ຄົບ — ${wardrobeErrors.join('; ')}` });
         }
         if (job.scriptErrs && job.scriptErrs.length) {
           logLn(`ສ້າງຕໍ່ໂດຍມີ ${job.scriptErrs.length} ຄຳເຕືອນ: ${job.scriptErrs.slice(0, 4).join('; ')}`);
